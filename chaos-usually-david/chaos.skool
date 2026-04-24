@@ -4426,10 +4426,14 @@ c$967A LD A,$46      ; {Set the colours to yellow on black ($46).
  $96CE DJNZ $96C9    ;
  $96D0 RET           ;
 
-; Routine at 96D1
+; Play beep sound effect and advance cursor
+;
+; Plays a short beep sound and performs a nested delay loop, then increments
+; the screen column counter in C. Used for the typewriter-style spell name
+; display.
 ;
 ; Used by the routine at #R$967A.
-@label=ROUTINE_96D1
+@label=PLAY_BEEP_AND_ADVANCE_CURSOR
 c$96D1 PUSH BC       ;
  $96D2 LD HL,$9117   ;
  $96D5 CALL $C2F9    ;
@@ -4444,10 +4448,12 @@ c$96D1 PUSH BC       ;
  $96E4 INC C         ;
  $96E5 RET           ;
 
-; Routine at 96E6
+; Timing delay loop
+;
+; Pure nested delay loop (~40,960 cycles). Preserves all registers.
 ;
 ; Used by the routines at #R$84F7, #R$89F9, #R$8F8B and #R$967A.
-@label=ROUTINE_96E6_MAYBE_BRIEF_PAUSE
+@label=TIMING_DELAY
 c$96E6 PUSH BC       ;
  $96E7 LD B,$FF      ;
 *$96E9 PUSH BC       ;
@@ -4644,10 +4650,15 @@ c$97D1 LD HL,$E01F   ;
  $980A LD ($BC94),HL ;
  $980D RET           ;
 
-; Routine at 980E
+; Check if target is within valid board area
+;
+; Gets the target location from #R$AC12, converts to screen coordinates, and
+; checks if the column (X) is less than $10 (within the 15-column board).
+;
+; Output: P flag set if out of bounds (column >= $10), M flag if in bounds.
 ;
 ; Used by the routines at #R$9975, #R$9ADD and #R$9B76.
-@label=ROUTINE_980E
+@label=CHECK_TARGET_IN_BOUNDS
 c$980E PUSH HL       ;
  $980F LD HL,($AC12) ;
  $9812 CALL $C703    ;
@@ -4746,11 +4757,16 @@ c$981A CALL $BED7    ; Clear the message bar.
  $98D7 CALL $97A3    ; Display the spell succeeds/fails message.
  $98DA RET           ;
 
-; Routine at 98DB
+; Check line of sight between caster and target
+;
+; Performs a line-of-sight check between the source (#R$AC14) and target
+; (#R$AC12) locations. Traces a path on screen and checks for obstacles.
+;
+; Output: Z flag = line blocked, NZ = clear line of sight.
 ;
 ; Used by the routines at #R$84F7, #R$85F6, #R$981A, #R$9975, #R$9ADD, #R$9B76,
 ; #R$9C59 and #R$9DAA.
-@label=ROUTINE_98DB
+@label=CHECK_LINE_OF_SIGHT
 c$98DB XOR A         ;
  $98DC LD ($B754),A  ; Set #R$B754 to 0.
  $98DF LD ($B60B),A  ; Set #R$B60B to 0.
@@ -4762,10 +4778,13 @@ c$98DB XOR A         ;
  $98EF OR A          ;
  $98F0 RET           ;
 
-; Routine at 98F1. Possibly to do with Shadow Wood?
+; Validate Magic Wood / Shadow Wood placement
+;
+; For Magic Wood ($24) and Shadow Wood ($25) spells only: checks all 8
+; adjacent cells around the target for obstructions.
 ;
 ; Used by the routines at #R$981A and #R$9ADD.
-@label=ROUTINE_98F1
+@label=VALIDATE_WOOD_PLACEMENT
 c$98F1 LD A,$00      ; {Set #R$9940 to 0.
  $98F3 LD ($9940),A  ; }
  $98F6 LD A,($937B)  ; {If the current spell ID < $24 (Magic Wood) jump to
@@ -4948,8 +4967,8 @@ c$9A21 CALL $A18A    ;
  $9A34 LD DE,$00A0   ; {Get the memory address in table 5 representing the
  $9A37 ADD HL,DE     ; cursor location.}
  $9A38 LD A,(HL)     ; {Overwrite the item in table 1 with the item in table 5.
- $9A39 LD HL,($AC12) ; TODO Why? Copying in dead creatures?
- $9A3C LD (HL),A     ; }
+ $9A39 LD HL,($AC12) ; This restores the underlying creature that was hidden
+ $9A3C LD (HL),A     ; beneath the illusion.}
  $9A3D CALL $9A52    ;
  $9A40 LD A,$01      ; {Set the spell success flag to 1 (successful).
  $9A42 LD ($9167),A  ; }
@@ -4958,8 +4977,8 @@ c$9A21 CALL $A18A    ;
  $9A48 LD HL,($AC12) ; {HL = the memory address in table 4 representing the
  $9A4B LD DE,$01E1   ; cursor location.
  $9A4E ADD HL,DE     ; }
- $9A4F SET 5,(HL)    ; Set bit 5. TODO Indicates that it should not be
-                     ; disbelieved by the AI again?
+ $9A4F SET 5,(HL)    ; Set bit 5. Marks the creature as already targeted by
+                     ; Disbelieve so the AI won't try again.
  $9A51 RET           ;
 
 ; Display explosion animation
@@ -5187,10 +5206,15 @@ c$9B76 LD A,$04      ; {Set the number of times you get to cast this spell (1)
 @label=VAR_9C0E
 b$9C0E DEFB $00
 
-; Routine at 9C0F - something to do with walls
+; Validate Wall placement (check wizard not adjacent)
+;
+; For the Wall spell ($28) only: checks all 8 adjacent cells. If the casting
+; wizard occupies an adjacent cell, the wall cannot be placed here.
+;
+; Output: #R$9C0E = 0 if OK, non-zero if blocked.
 ;
 ; Used by the routines at #R$981A and #R$9B76.
-@label=ROUTINE_9C0F
+@label=VALIDATE_WALL_PLACEMENT
 c$9C0F LD A,$00      ; {Set #R$9C0E to 0.
  $9C11 LD ($9C0E),A  ; }
  $9C14 LD A,($937B)  ; {If this spell isn't $28 (Wall) jump to #R$9C54.
@@ -5264,10 +5288,14 @@ c$9C59 LD A,($AC2E)  ; {If the current wizard is computer controlled jump to
 *$9CA4 CALL $98DB    ;
  $9CA7 JR NZ,$9C60   ;
 
-; Routine at 9CA9
+; Resolve Lightning / Magic Bolt damage
+;
+; Displays the spell animation and target coordinates, then calculates damage:
+; target defense + random 0-9 vs attack (random 0-9 + 3, or +6 for Lightning).
+; If attack >= defense, the target creature is destroyed.
 ;
 ; Used by the routine at #R$9D8A.
-@label=ROUTINE_9CA9
+@label=RESOLVE_BOLT_DAMAGE
 c$9CA9 LD A,$05      ;
  $9CAB LD ($B60B),A  ;
  $9CAE LD HL,$C275   ;
@@ -5375,10 +5403,13 @@ c$9CA9 LD A,$05      ;
  $9D86 CALL $C0DD    ;
  $9D89 RET           ;
 
-; Routine at 9D8A
+; AI cast Lightning / Magic Bolt
+;
+; Computer wizard casting of Lightning or Magic Bolt. Finds a valid target
+; from the pre-built targets table, then resolves damage.
 ;
 ; Used by the routine at #R$9C59.
-@label=ROUTINE_9D8A
+@label=AI_CAST_BOLT
 c$9D8A LD HL,($AC14) ;
  $9D8D LD ($C649),HL ;
  $9D90 LD ($C78B),HL ;
@@ -5393,12 +5424,17 @@ c$9D8A LD HL,($AC14) ;
  $9DA6 CALL $9CA9    ;
  $9DA9 RET           ;
 
-; Routine at 9DAA
-@label=ROUTINE_9DAA
-c$9DAA LD HL,($CD86) ;
+; Advance to next target in targets table
+;
+; Skips 2 bytes in the targets table (past current entry) and reads the next
+; target. Used as part of AI target selection loop.
+;
+; Output: A = next target arena offset, $FF = end of table.
+@label=ADVANCE_AND_GET_NEXT_TARGET
+c$9DAA LD HL,($CD86) ; {Advance pointer past current 2-byte entry.
  $9DAD INC HL        ;
  $9DAE INC HL        ;
- $9DAF LD ($CD86),HL ;
+ $9DAF LD ($CD86),HL ; }
 ; This entry point is used by the routine at #R$9D8A.
 *$9DB2 LD HL,($CD86) ;
  $9DB5 LD A,(HL)     ;
@@ -5468,10 +5504,14 @@ c$9DE0 LD A,($AC2E)  ; {If the current wizard is computer controlled jump to
  $9E35 DJNZ $9E08    ;
  $9E37 RET           ;
 
-; Routine at 9E38
+; Resolve Dark Power spell with animation
+;
+; Displays a visual effect (scrolling text animation at target), then performs
+; a magic resistance check. If the target's resistance is overcome, the
+; creature is destroyed and any trapped wizard/underlying creature is restored.
 ;
 ; Used by the routines at #R$9DE0 and #R$9EF9.
-@label=ROUTINE_9E38
+@label=RESOLVE_DARK_POWER
 c$9E38 LD HL,$9135   ;
  $9E3B LD ($C2F3),HL ;
  $9E3E CALL $C0DD    ;
@@ -5572,10 +5612,14 @@ c$9E38 LD HL,$9135   ;
  $9EF7 HALT          ;
  $9EF8 RET           ;
 
-; Routine at 9EF9
+; AI cast Dark Power
+;
+; Computer wizard casting of Dark Power spell. Performs initial spell success
+; roll, then iterates through up to 3 valid targets (for spells >= $2F) or
+; 1 target (for lower spells) and resolves each using #R$9E38.
 ;
 ; Used by the routine at #R$9DE0.
-@label=ROUTINE_9EF9
+@label=AI_CAST_DARK_POWER
 c$9EF9 CALL $967A    ;
  $9EFC CALL $9760    ;
  $9EFF LD A,($9167)  ; {If the spell succeeded (see #R$9167) jump to #R$9F09.
@@ -5646,8 +5690,8 @@ c$9F50 LD HL,$E01F   ; HL = #R$E01F, arena state table 1
  $9F7E AND $07       ; the 3 least significant bits.}
  $9F80 LD ($AC0E),A  ; Set the current wizard ID (#R$AC0E)
  $9F83 CALL $BE94    ; A = a random number from 0 to 9.
- $9F86 CP $09        ; {If A >= 9 jump to #R$A0C6. TODO Why?
- $9F88 JP P,$A0C6    ; }
+ $9F86 CP $09        ; {If A >= 9 (1-in-10 chance) the blob/fire fizzles out
+ $9F88 JP P,$A0C6    ; this turn - jump to cleanup at #R$A0C6.}
  $9F8B LD HL,($AC14) ; {If the space contains a magic fire, jump to #R$9F9B.
  $9F8E LD A,(HL)     ;
  $9F8F CP $23        ;
@@ -5760,10 +5804,14 @@ c$9F50 LD HL,$E01F   ; HL = #R$E01F, arena state table 1
 ; Data block at A06F
 b$A06F DEFB $21,$35,$91,$22,$F3,$C2
 
-; Routine at A075
+; Blob and fire spreading attack
+;
+; Resolves blob/fire spread onto an occupied square. Calculates the target's
+; defense (defense stat + random 0-9) vs attack strength (random 0-9 + 5).
+; If attack >= defense, the target is destroyed and replaced.
 ;
 ; Used by the routine at #R$9F50.
-@label=MAYBE_BLOB_AND_FIRE_ACTIONS
+@label=BLOB_FIRE_ATTACK_TARGET
 c$A075 LD HL,($AC14) ;
  $A078 LD D,(HL)     ;
  $A079 LD E,$10      ; {A = the creature's defence.
@@ -5830,7 +5878,7 @@ c$A075 LD HL,($AC14) ;
  $A0F9 SBC HL,DE     ; }
  $A0FB LD (HL),A     ; Move the underlying creature ID from table 6 to table 5.
  $A0FC JR $A109      ;
-*$A0FE LD HL,($AC12) ; TODO Fire/blob blinking out of existence?
+*$A0FE LD HL,($AC12) ; Blob/fire has dissipated - reset the square to empty.
  $A101 LD (HL),$01   ;
  $A103 LD DE,$0321   ; {Delete the entry at the corresponding location in arena
  $A106 ADD HL,DE     ; table 6.
@@ -5901,10 +5949,15 @@ c$A173 LD HL,$E200   ; {Set bit 7 across every entry in arena table 4 (#R$E200)
  $A17B DJNZ $A178    ; }
  $A17D RET           ;
 
-; Routine at A17E
+; Get next target ID from targets table
+;
+; Simple iterator: advances the targets table pointer (#R$CD86) by 2 bytes
+; and returns the value at the second byte.
+;
+; Output: A = target arena offset (or $FF for end of table).
 ;
 ; Used by the routines at #R$84F7, #R$85F6, #R$9A95, #R$9B76 and #R$9EF9.
-@label=ROUTINE_A17E
+@label=GET_NEXT_TARGET_ID
 c$A17E LD HL,($CD86) ;
  $A181 INC HL        ;
  $A182 LD A,(HL)     ;
@@ -6844,10 +6897,14 @@ c$ACED CALL $BDE7    ;
 b$AF03 DEFB $FE,$24,$20,$06,$3A,$0D,$AC,$B7
  $AF0B DEFB $20,$43
 
-; Maybe creature turn routine?
+; Creature movement turn
+;
+; Handles the movement turn for a selected creature. Checks if the creature is
+; in a castle/citadel ($26-$27) and handles wizard hiding/mounting, then
+; proceeds with regular movement or attack logic.
 ;
 ; Used by the routine at #R$ACED.
-@label=ROUTINE_AF0D_MAYBE_CREATURE_TURN
+@label=CREATURE_MOVEMENT_TURN
 c$AF0D LD A,($AC0C)  ;
  $AF10 CP $26        ;
  $AF12 JP M,$AF2B    ;
