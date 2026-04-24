@@ -1392,25 +1392,27 @@ c$7D04 LD A,($7D03)  ; {If the round counter < 6, return. The check only
 
 ; Table - spells
 ;
-; This holds the information for all of the spells in the game. TODO Why are
-; some of the addresses in here different from the ID that is stored when the
-; user selects the spell?
+; This holds the information for all of the spells in the game. The spell IDs in
+; the table are internal index values, not the same as the position-based IDs
+; used when selecting spells from the inventory. The two numbering systems exist
+; because the table order doesn't match the displayed order.
 ; .
 ; #LIST(data)
-; { ID: The spell's ID. }
+; { ID: The spell's internal ID. }
 ; { Casting chance. 0 is 10%, 9 is 100%. }
 ; { The max cast distance, times two then plus 1. Stored like this for use in
 ; calculating diagonal distances. }
 ; { Effect on the chaos/law indicator. This is in two's complement for negative
 ; values. Positive is lawful and negative is chaotic. }
-; { TODO: Unknown. Saved into the wizard's spell inventory alongside the spell
-; ID. }
+; { Spell priority/weighting value. Stored as the first byte of each 2-byte
+; pair in the wizard's spell inventory alongside the spell ID. Used during
+; spell assignment with a random offset (12-21) added. }
 ; { The last two values are the address of the routine to call when casting the
 ; spell, swapped around. }
 ; LIST#
 ; .
 ; #TABLE(default,centre)
-; { =h ID | =h Casting Chance | =h Distance * 2 | =h Chaos/law | =h Unknown |
+; { =h ID | =h Casting Chance | =h Distance * 2 | =h Chaos/law | =h Priority |
 ; =h Routine }
 ; #FOR(0,64)//n/ { #PEEK($7D60+n*$7) | #PEEK($7D60+n*$7+1) |
 ; #PEEK($7D60+n*$7+2) | #PEEK($7D60+n*$7+3) | #PEEK($7D60+n*$7+4) | }
@@ -1494,9 +1496,10 @@ b$7F27 DEFB $FF,$80,$80,$87,$8C,$88,$8C,$87
 ; Table - Wizard spell inventories
 ;
 ; Contains the set of spells assigned to a wizard at the start of the game.
-; They're arranged in two bytes - the purpose of the first byte is unknown, but
-; the second byte is the spell ID. (TODO: investigate first byte) As the spell
-; is cast, the byte representing the spell ID is set to 0.
+; Arranged as 2-byte pairs: the first byte is the spell priority/weighting
+; value (from byte 4 of the spell table entry, plus a random 12-21 offset
+; during initial assignment). The second byte is the spell ID. When a spell
+; is cast, its ID byte is set to 0.
 @label=TABLE_WIZARD_SPELL_INVENTORIES
 b$7F47 DEFB $0F,$01,$12,$1C,$12,$00,$12,$17,$12,$3E
  $7F51 DEFB $0E,$36,$12,$00,$12,$20,$12,$00,$12,$2B
@@ -2095,45 +2098,52 @@ c$84F7 LD A,($AC2E)  ; {If the current wizard is computer controlled jump to
  $8598 CALL $859C    ;
  $859B RET           ;
 
-; Routine at 859C
+; Check spell success against magic resistance
+;
+; Tests the target creature's magic resistance against a random roll to
+; determine if the spell succeeds. If the target has been disbelieved (bit 4
+; in arena table 4), the spell automatically fails. On success, transfers
+; ownership of the creature to the casting wizard.
+;
+; Sets #R$9167 to 1 on success, 0 on failure.
 ;
 ; Used by the routine at #R$84F7.
-@label=ROUTINE_859C
+@label=CHECK_SPELL_VS_RESISTANCE
 c$859C LD A,($AC2E)  ; {If the current wizard is player controlled jump to
  $859F OR A          ; #R$85A5.
  $85A0 JR Z,$85A5    ; }
- $85A2 CALL $967A    ;
-*$85A5 CALL $A18A    ;
- $85A8 LD HL,($AC12) ;
+ $85A2 CALL $967A    ; Display wizard name, spell, and range for AI.
+*$85A5 CALL $A18A    ; Display casting animation (cyan line, twirl).
+ $85A8 LD HL,($AC12) ; {Get target's entry in arena table 4.
  $85AB LD DE,$01E1   ;
- $85AE ADD HL,DE     ;
- $85AF BIT 4,(HL)    ;
- $85B1 JR NZ,$85CA   ;
- $85B3 LD HL,($AC12) ;
- $85B6 LD D,(HL)     ;
- $85B7 LD E,$13      ; {A = the creature's magic resistance.
+ $85AE ADD HL,DE     ; }
+ $85AF BIT 4,(HL)    ; {If the target is an illusion (bit 4 set), auto-fail:
+ $85B1 JR NZ,$85CA   ; jump to failure.}
+ $85B3 LD HL,($AC12) ; {Get the target creature's magic resistance stat
+ $85B6 LD D,(HL)     ; (creature data offset $13 = magic resistance).
+ $85B7 LD E,$13      ;
  $85B9 CALL $BE0A    ; }
- $85BC INC A         ;
- $85BD LD ($A172),A  ;
- $85C0 CALL $904B    ;
- $85C3 LD HL,$A172   ;
- $85C6 CP (HL)       ;
- $85C7 JP M,$85D3    ;
-*$85CA LD A,$00      ;
- $85CC LD ($9167),A  ;
+ $85BC INC A         ; Resistance + 1 (makes 0 resistance still blockable).
+ $85BD LD ($A172),A  ; Store resistance threshold.
+ $85C0 CALL $904B    ; Generate random number 0-9.
+ $85C3 LD HL,$A172   ; {If random < resistance, spell succeeds: jump to
+ $85C6 CP (HL)       ; #R$85D3.
+ $85C7 JP M,$85D3    ; }
+*$85CA LD A,$00      ; {Spell failed. Set #R$9167 to 0.
+ $85CC LD ($9167),A  ; }
  $85CF CALL $97A3    ; Display the spell succeeds/fails message.
  $85D2 RET           ;
-*$85D3 LD HL,($AC12) ;
- $85D6 LD DE,$01E1   ;
- $85D9 ADD HL,DE     ;
+*$85D3 LD HL,($AC12) ; {Spell succeeded. Transfer ownership: get target's
+ $85D6 LD DE,$01E1   ; arena table 4 entry, clear the old owner bits (AND $F8)
+ $85D9 ADD HL,DE     ; and set the new owner to the current wizard.
  $85DA LD A,(HL)     ;
  $85DB AND $F8       ;
  $85DD LD E,A        ;
  $85DE LD A,($AC0E)  ;
  $85E1 ADD A,E       ;
- $85E2 LD (HL),A     ;
- $85E3 LD A,$01      ;
- $85E5 LD ($9167),A  ;
+ $85E2 LD (HL),A     ; }
+ $85E3 LD A,$01      ; {Spell succeeded. Set #R$9167 to 1.
+ $85E5 LD ($9167),A  ; }
  $85E8 CALL $97A3    ; Display the spell succeeds/fails message.
  $85EB RET           ;
 
@@ -2614,7 +2624,8 @@ b$89AF DEFB $0D
 ; then match up with the ID of a wizard with that number, as the wizard IDs
 ; start counting from 0.
 ; .
-; If the flag at #R$8323 is set, TODO
+; If the flag at #R$8323 is set, restrict input to 2-8 only (player cannot
+; choose 1). Used when selecting the number of wizards in the game.
 ; .
 ; Used by the routine at #R$89F9.
 ;
@@ -2668,9 +2679,9 @@ c$89F9 XOR A         ;
  $8A09 LD ($5C91),A  ;
  $8A0C DI            ;
  $8A0D CALL $C5EE    ; Clear the screen.
- $8A10 LD HL,$AC16   ; {Clear the data at #R$AC16 (wizard status) and #R$AC1E
- $8A13 LD DE,$AC17   ; (TODO ???).
- $8A16 LD (HL),$00   ;
+ $8A10 LD HL,$AC16   ; {Clear the wizard status values (#R$AC16) and wizard
+ $8A13 LD DE,$AC17   ; creature presence table (#R$AC1E). LDIR fills 32 bytes
+ $8A16 LD (HL),$00   ; with $00.
  $8A18 LD BC,$001F   ;
  $8A1B LDIR          ; }
  $8A1D LD HL,$7F47   ; {Clear the wizard spell inventories (#R$7F47 to 8086).
@@ -2736,7 +2747,7 @@ c$89F9 XOR A         ;
  $8AB9 SLA A         ; #R$89A9. 0,1,2,3,4,5,6,7 maps to 15, 19, 23, 27, 31, 35,
  $8ABB ADD A,$0F     ; 39, 43
  $8ABD LD ($89A9),A  ; }
- $8AC0 LD B,$0A      ; {TODO Pause for a short time?
+ $8AC0 LD B,$0A      ; {Pause briefly by calling the delay routine 10 times.
 @label=MAIN_LOOP_0
 *$8AC2 PUSH BC       ;
  $8AC3 CALL $96E6    ;
@@ -3062,8 +3073,9 @@ c$89F9 XOR A         ;
  $8D7D LD HL,($9154) ; {HL = current wizard's inventory location
  $8D80 DEC HL        ; }
  $8D81 LD ($9154),HL ; Save HL to #R$9154 (the wizard's inventory location)
- $8D84 CALL $904B    ; {Get a random number (0-9?) and add 12 to it. TODO Why?
- $8D87 ADD A,$0C     ; }
+ $8D84 CALL $904B    ; {Get a random number (0-9) and add 12 to it, giving a
+ $8D87 ADD A,$0C     ; range of 12-21. This becomes the priority/weighting byte
+                     ; stored as the first byte of each spell inventory pair.}
  $8D89 LD HL,($9154) ; HL = #R$9154 (the wizard's inventory location)
  $8D8C LD (HL),A     ; Save the mystery number to the inventory
  $8D8D INC HL        ; Move to the next inventory slot
@@ -3083,8 +3095,9 @@ c$89F9 XOR A         ;
  $8DA4 LD A,R        ;
  $8DA6 LD L,A        ;
  $8DA7 LD A,(HL)     ; }
- $8DA8 LD HL,($CD86) ; {TODO Why are we adding data from #R$CD86 to A?
- $8DAB ADD A,(HL)    ; }
+ $8DA8 LD HL,($CD86) ; {Add the value at the working pointer #R$CD86 to A.
+ $8DAB ADD A,(HL)    ; This mixes in data from the spell data area to create
+                     ; a pseudo-random but varied spell selection.}
  $8DAC AND $3F       ; Max spell ID is $3F (Raise Dead)
  $8DAE CP $02        ; {If the spell ID is less than 2 (i.e. if it's
  $8DB0 JP M,$8D9F    ; disbelieve) or if it's $42 or more jump back to #R$8D9F
@@ -3094,10 +3107,10 @@ c$89F9 XOR A         ;
  $8DB9 LD ($CD86),HL ;
  $8DBC LD ($937B),A  ; Save the spell ID to #R$937B
  $8DBF CALL $92F9    ; Get the spell info
- $8DC2 LD A,(IX+$04) ; A = the new spell ID? TODO Doesn't seem to be the spell
-                     ; ID, it's the number between each spell ID
+ $8DC2 LD A,(IX+$04) ; A = the spell's priority/weighting value (byte 4 from
+                     ; the spell table entry, see #R$7D60).
  $8DC5 LD HL,($9154) ; HL = #R$9154 (the current inventory location)
- $8DC8 LD (HL),A     ; Save the spell ID to the inventory
+ $8DC8 LD (HL),A     ; Save the priority value as the first byte of the pair.
  $8DC9 INC HL        ;
  $8DCA LD A,($937B)  ; Load the current spell ID into A.
  $8DCD LD (HL),A     ;
@@ -3368,7 +3381,7 @@ c$8F8B LD A,($5C8F)  ;
  $8FAC ADD HL,DE     ; corresponding location in table 5 (#R$E2A0).}
  $8FAD LD A,(HL)     ; Load the entry from table 5 into A.
  $8FAE OR A          ; {If there's nothing in the corresponding entry in table
- $8FAF JP Z,$9031    ; 5 (TODO: what would be in there? The wizard ID?), jump
+ $8FAF JP Z,$9031    ; 5 (no wizard hiding in this tree), jump to #R$9031.}
                      ; to #R$9031.}
  $8FB2 LD ($A172),A  ;
  $8FB5 CALL $904B    ;
@@ -3496,11 +3509,14 @@ c$904B PUSH HL       ;
 @label=RANDOM_NUM_RESULT
 b$907A DEFB $24
 
-; Routine at 907B. Unknown purpose - seems to write something into memory with
-; every keypress during setup.
+; Entropy accumulator (seed random number generator from keyboard timing)
+;
+; Scans the keyboard and uses the timing of keypresses combined with the Z80 R
+; register to write pseudo-random seed data into the spell data area pointed to
+; by #R$CD86. Called during setup to build entropy from player input timing.
 ;
 ; Used by the routines at #R$89B0 and #R$89F9.
-@label=UNKNOWN_SETUP_ROUTINE_907B
+@label=ACCUMULATE_ENTROPY_FROM_INPUT
 c$907B PUSH HL       ;
  $907C PUSH DE       ;
  $907D PUSH BC       ;
@@ -4334,8 +4350,7 @@ c$95C7 CALL $C5EE    ; Clear the screen.
  $963F INC E         ; }
  $9640 CP E          ; {If A < E spell succeeded. Jump to #R$964C.
  $9641 JP M,$964C    ; }
- $9644 LD A,$00      ; {Record that the spell failed at #R$9167. TODO Or did it
- $9646 LD ($9167),A  ; succeed?}
+ $9644 LD A,$00      ; {Spell failed. Set #R$9167 to 0 (failure).\n $9646 LD ($9167),A  ; }
  $9649 JP $9659      ;
 @label=CAST_SPELLS_5_SUCCESSFUL
 *$964C LD A,$01      ; {Record that the spell succeeded at #R$9167.
