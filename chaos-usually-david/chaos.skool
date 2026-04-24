@@ -4892,7 +4892,7 @@ c$9975 LD A,$01      ; {Set the number of times you get to cast this spell (1)
  $99A5 LD ($975F),A  ; }
  $99A8 RET           ;
 @label=CAST_CREATURE_4
-*$99A9 CALL $980E    ; {Maybe checking target square is empty?
+*$99A9 CALL $980E    ; {Check target square is within arena bounds.
  $99AC JR Z,$999C    ; }
  $99AE CALL $98DB    ;
  $99B1 JR NZ,$999C   ;
@@ -6672,8 +6672,8 @@ c$ACED CALL $BDE7    ;
  $AD17 CP $1E        ;
  $AD19 JP P,$AD23    ; }
  $AD1C LD A,($AC01)  ; {Set the selection square range (#R$AC03) to the
- $AD1F INC A         ; movement range +1. TODO Why?
- $AD20 LD ($AC03),A  ; }
+ $AD1F INC A         ; movement range +1 (accounts for the creature's own
+ $AD20 LD ($AC03),A  ; square in the range check).}
 *$AD23 LD A,($AC0C)  ; A = selected creature ID
  $AD26 SUB $29       ; {If it's not a wizard, jump to #R$AD4A.
  $AD28 JP M,$AD4A    ; }
@@ -6689,8 +6689,8 @@ c$ACED CALL $BDE7    ;
  $AD3C JR $AD4A      ; Jump to #R$AD4A.
 *$AD3E BIT 3,A       ; {If the wizard has shadow form, continue. Otherwise,
  $AD40 JR Z,$AD4A    ; jump to #R$AD4A.}
- $AD42 LD A,$06      ; {Set remaining move points (TODO verify) to 6 (3 spaces)
- $AD44 LD ($AC01),A  ; }
+ $AD42 LD A,$06      ; {Set remaining move points to 6 (3 spaces) for shadow
+ $AD44 LD ($AC01),A  ; form movement.}
  $AD47 LD ($AC35),A  ;
 *$AD4A LD A,($AC10)  ; Get the creature's status flags from #R$AC10.
  $AD4D BIT 7,A       ; {If bit 7 is set (creature has already moved) return.
@@ -6704,7 +6704,7 @@ c$ACED CALL $BDE7    ;
  $AD5D CP L          ; If they're different, return.
  $AD5E RET NZ        ; }
  $AD5F LD A,($AC0C)  ; A = selected creature ID
- $AD62 LD ($AC0D),A  ; Store the selected creature's ID in #R$AC0D (TODO Why?)
+ $AD62 LD ($AC0D),A  ; Store the wizard's creature ID in #R$AC0D for movement.
  $AD65 JP $ADD2      ; Jump to #R$ADD2.
 *$AD68 LD A,($AC09)  ; Get the object status from arena table 5.
  $AD6B SUB $29       ; {If it's less than $29 (i.e. doesn't contain a hidden
@@ -6853,8 +6853,8 @@ c$ACED CALL $BDE7    ;
  $AEA4 XOR A         ;
  $AEA5 SBC HL,DE     ;
  $AEA7 JR Z,$AE50    ; }
- $AEA9 LD A,($AC0C)  ; {User has chosen a target square. A = TODO??? #R$AC0C.
- $AEAC OR A          ; If it's 0 jump to #R$AF50.
+ $AEA9 LD A,($AC0C)  ; {User has chosen a target square. A = creature at target
+ $AEAC OR A          ; from #R$AC0C. If it's 0 (empty) jump to #R$AF50.
  $AEAD JP Z,$AF50    ; }
  $AEB0 LD HL,($AC12) ;
  $AEB3 LD DE,$0141   ;
@@ -6887,9 +6887,9 @@ c$ACED CALL $BDE7    ;
  $AEF0 OR A          ;
  $AEF1 JP Z,$AE50    ;
  $AEF4 LD A,($AC0C)  ; A = selected creature ID (#R$AC0C)
- $AEF7 CP $10        ; {If A < $10 or A >= $16 (TODO the selected creature is
- $AEF9 JP M,$AE50    ; not mountable, maybe?) jump to #R$AE50.
- $AEFC CP $16        ;
+ $AEF7 CP $10        ; {If A < $10 or A >= $16 (not a mountable creature -
+ $AEF9 JP M,$AE50    ; only pegasus $10 to manticore $15 can be ridden) jump
+ $AEFC CP $16        ; to #R$AE50.
  $AEFE JP P,$AE50    ; }
  $AF01 JR $AF50      ;
 
@@ -7107,7 +7107,7 @@ c$AF0D LD A,($AC0C)  ;
  $B09D OR A          ; {If the creature doesn't have ranged combat, return.
  $B09E RET Z         ; }
  $B09F LD ($ABFC),A  ; Set #R$ABFC to the creature's range.
- $B0A2 CALL $BBCC    ; TODO Set up ranged combat?
+ $B0A2 CALL $BBCC    ; Set up ranged combat cursor display.
  $B0A5 JP $B8DD      ; Call the ranged combat routine.
 
 ; Flying movement.
@@ -7203,8 +7203,8 @@ b$B163 DEFB $00
 @label=ATTACKED_IS_UNDEAD
 b$B164 DEFB $00
 
-; Data block at B165
-@label=VAR_B165_MAYBE_ATTACKING_CREATURE
+; Variable - the result of the last attack ($FF = miss, creature ID = killed)
+@label=ATTACK_RESULT
 b$B165 DEFB $00
 
 ; Data block at B166
@@ -7266,10 +7266,10 @@ c$B168 CALL $BED7    ; Clear the message bar.
  $B1C9 INC HL        ; the creature's name.
  $B1CA LD B,(HL)     ; }
  $B1CB LD ($B166),BC ;
- $B1CF LD IX,($B166) ; {TODO Possibly changing the colours with which the
- $B1D3 LD A,(IX+$19) ; target is displayed?
- $B1D6 LD (IX+$1C),A ;
- $B1D9 LD (IX+$22),A ; }
+ $B1CF LD IX,($B166) ; {Copy the creature's colour attribute (offset $19)
+ $B1D3 LD A,(IX+$19) ; to the sprite colour fields at offsets $1C and $22.
+ $B1D6 LD (IX+$1C),A ; This sets the display colour for the attacked
+ $B1D9 LD (IX+$22),A ; creature's sprite.}
  $B1DC POP HL        ;
  $B1DD LD A,(HL)     ;
  $B1DE AND $07       ;
@@ -7436,7 +7436,8 @@ c$B168 CALL $BED7    ; Clear the message bar.
  $B322 JR NZ,$B347   ;
  $B324 LD DE,$00A1   ; {Get the corresponding space for the attacked creature
  $B327 ADD HL,DE     ; in arena table 2.}
- $B328 LD (HL),$01   ; Set it to 1. TODO - what does this indicate?
+ $B328 LD (HL),$01   ; Set animation timer to 1 (expires immediately, causing
+                     ; the dead body sprite to appear on next ISR tick).
  $B32A LD DE,$00A0   ; {Point HL to the corresponding space in arena 3.
  $B32D ADD HL,DE     ; }
  $B32E LD (HL),$04   ; Set the value to 4, which indicates a dead body at the
@@ -7841,10 +7842,13 @@ b$B60B DEFB $02
 @label=VAR_B60C
 b$B60C DEFB $28
 
-; Routine at B60D
+; Convert arena address to pixel coordinates
+;
+; Takes an arena table 1 address in HL and converts it to pixel X,Y coordinates
+; for PLOT/DRAW by extracting column (×16) and row from the offset.
 ;
 ; Used by the routine at #R$B626.
-@label=ROUTINE_B60D
+@label=ARENA_ADDR_TO_PIXEL_COORDS
 c$B60D LD DE,$E01F   ;
  $B610 XOR A         ;
  $B611 SBC HL,DE     ;
@@ -7865,10 +7869,14 @@ c$B60D LD DE,$E01F   ;
  $B624 EX DE,HL      ;
  $B625 RET           ;
 
-; Routine at B626 Maybe fire attack animation
+; Draw ranged attack beam
+;
+; Sets up and draws the beam/ranged attack line between source and target.
+; Handles different beam styles (single pixel, cross, diamond) depending on
+; the attack type flag in #R$B60B.
 ;
 ; Used by the routines at #R$98DB, #R$9C59, #R$9CA9, #R$A18A and #R$B8DD.
-@label=MAYBE_FIRE_ATTACK_ANIM
+@label=DRAW_RANGED_BEAM
 c$B626 XOR A         ;
  $B627 LD ($5C90),A  ;
  $B62A LD ($5C91),A  ;
@@ -8017,10 +8025,13 @@ c$B626 XOR A         ;
  $B730 RET           ;
 *$B731 JR Z,$B718    ;
 
-; Routine at B733
+; Clear a single pixel
+;
+; Clears (resets) the pixel at screen coordinates BC using the ROM PIXEL-ADD
+; routine ($22AA) and an AND-mask.
 ;
 ; Used by the routine at #R$B8BD.
-@label=ROUTINE_B733
+@label=CLEAR_PIXEL
 c$B733 LD ($5C7D),BC ;
  $B737 CALL $22AA    ; Pixel address ROM subroutine.
  $B73A LD B,A        ;
@@ -8034,10 +8045,13 @@ c$B733 LD ($5C7D),BC ;
  $B744 LD (HL),A     ;
  $B745 RET           ;
 
-; Routine at B746
+; Dispatch beam draw or collision test
+;
+; If #R$B60B = 0, calls #R$B755 to test pixel collision. Otherwise calls
+; #R$B7D3 to draw the beam trail.
 ;
 ; Used by the routine at #R$B626.
-@label=ROUTINE_B746
+@label=BEAM_DRAW_OR_TEST
 c$B746 LD A,($B60B)  ;
  $B749 OR A          ;
  $B74A JR Z,$B750    ;
@@ -8050,10 +8064,13 @@ c$B746 LD A,($B60B)  ;
 @label=VAR_B754
 b$B754 DEFB $00
 
-; Routine at B755
+; Test if pixel is set (beam collision)
+;
+; Tests if the pixel at coordinates BC is already set. If so, stores 1 in
+; #R$B754 (hit flag). Used for beam/ranged attack collision detection.
 ;
 ; Used by the routine at #R$B746.
-@label=ROUTINE_B755
+@label=TEST_PIXEL_SET
 c$B755 LD ($5C7D),BC ;
  $B759 CALL $22AA    ; Pixel address ROM subroutine.
  $B75C LD B,A        ;
@@ -8094,10 +8111,13 @@ b$B76D DEFB $70,$60,$70,$5F,$70,$5E,$70,$5D
  $B7C5 DEFB $CD,$20,$CE,$20,$CF,$20,$D0,$20
  $B7CD DEFB $D1,$20,$D2,$20,$D3,$20
 
-; Routine at B7D3
+; Draw beam trail animation
+;
+; Draws the animated beam line trail: shifts the coordinate buffer (LDDR),
+; plots the new head position, or expands the pattern at the destination.
 ;
 ; Used by the routine at #R$B746.
-@label=ROUTINE_B7D3
+@label=DRAW_BEAM_TRAIL
 c$B7D3 PUSH HL       ;
  $B7D4 LD ($B76D),BC ;
  $B7D8 PUSH BC       ;
@@ -8164,10 +8184,13 @@ c$B7D3 PUSH HL       ;
 @label=VAR_B844
 b$B844 DEFB $02
 
-; Routine at B845
+; Draw beam pixel pattern
+;
+; Draws a beam pixel pattern at a point - single pixel, cross (5px), or
+; diamond (13px) depending on #R$B844 and #R$B60B flags.
 ;
 ; Used by the routine at #R$B7D3.
-@label=ROUTINE_B845
+@label=DRAW_BEAM_PIXELS
 c$B845 LD A,($B844)  ;
  $B848 OR $80        ;
  $B84A LD ($B844),A  ;
@@ -8237,10 +8260,13 @@ c$B845 LD A,($B844)  ;
  $B8BB INC (HL)      ;
  $B8BC RET           ;
 
-; Routine at B8BD
+; Plot or clear a single pixel
+;
+; Conditionally plots (ROM $22E5) or clears (#R$B733) a pixel based on bit 7
+; of #R$B844 (erase flag).
 ;
 ; Used by the routine at #R$B845.
-@label=ROUTINE_B8BD
+@label=PLOT_OR_CLEAR_PIXEL
 c$B8BD PUSH BC       ;
  $B8BE LD A,($B844)  ;
  $B8C1 AND $80       ;
@@ -8442,7 +8468,9 @@ c$B8DD LD A,$43      ; {Draw the border in magenta on black ($43).
  $BA6A CP $29        ; {If A >= $29 (Wizard) jump to #R$BA72.
  $BA6C JP P,$BA72    ; }
  $BA6F CP $23        ; {If the target is pointing at anything from $23 to $28,
- $BA71 RET P         ; return. TODO What's going on here?}
+ $BA71 RET P         ; return. Creatures $23-$28 are magic fire, shadow wood,
+                     ; magic wood, magic castle, dark citadel, wall - immune
+                     ; to ranged attacks.}
 @label=RANGED_COMBAT_14
 *$BA72 JP $B168      ;
 
@@ -8450,10 +8478,13 @@ c$B8DD LD A,$43      ; {Draw the border in magenta on black ($43).
 @label=TEMP_VAR_FOR_BA77
 b$BA75 DEFB $BD,$E0
 
-; Routine at BA77
+; Redraw special sprites on the arena
+;
+; Loops through all 159 arena squares and redraws sprites for magic fire,
+; ghosts, wraiths, dead creatures (frame = $04), and the cursor.
 ;
 ; Used by the routines at #R$98DB and #R$B8DD.
-@label=ROUTINE_BA77
+@label=REDRAW_SPECIAL_SPRITES
 c$BA77 DI            ;
  $BA78 LD HL,$E01F   ; {Going to loop through every space in the arena table 1.
  $BA7B LD B,$9F      ;
@@ -8468,11 +8499,11 @@ c$BA77 DI            ;
  $BA8E CALL Z,$BABE  ; }
  $BA91 LD DE,$0141   ; {HL = the corresponding space in arena table 3
  $BA94 ADD HL,DE     ; }
- $BA95 LD A,(HL)     ; {If table 3 contains the value 4 call #R$BABE. TODO Why?
- $BA96 CP $04        ; }
+ $BA95 LD A,(HL)     ; {If table 3 contains 4 the creature is dead - erase its
+ $BA96 CP $04        ; sprite by calling #R$BABE.}
  $BA98 CALL Z,$BABE  ;
  $BA9B XOR A         ;
- $BA9C LD HL,($BA75) ; {HL = current space - cursor (TODO starting position?)
+ $BA9C LD HL,($BA75) ; {HL = current space vs cursor position (#R$AC12).
  $BA9F LD DE,($AC12) ;
  $BAA3 SBC HL,DE     ; }
  $BAA5 CALL Z,$BABE  ; If same space call #R$BABE?
@@ -8488,10 +8519,13 @@ c$BA77 DI            ;
  $BABC EI            ;
  $BABD RET           ;
 
-; Routine at BABE
+; Erase sprite at current arena position
+;
+; Erases the sprite at the position stored in #R$BA75 by drawing the blank
+; tile ($EB51) over it.
 ;
 ; Used by the routine at #R$BA77.
-@label=ROUTINE_BABE
+@label=ERASE_SPRITE
 c$BABE PUSH AF       ;
  $BABF LD HL,($BA75) ;
  $BAC2 LD ($E005),HL ;
@@ -8503,7 +8537,7 @@ c$BABE PUSH AF       ;
  $BAD4 POP AF        ;
  $BAD5 RET           ;
 
-; Prints a single character, as set in A? TODO Check
+; Prints a single character to screen
 ;
 ; Used by the routines at #R$89B0, #R$89F9, #R$9168, #R$9385, #R$94A7, #R$967A,
 ; #R$ACED, #R$AF0D, #R$B8DD, #R$BAEE, #R$BC96, #R$C3B3, #R$C5FC and #R$C612.
@@ -8521,10 +8555,13 @@ c$BAD6 LD HL,$D808   ;
  $BAEC INC C         ;
  $BAED RET           ;
 
-; Routine at BAEE
+; Print a string of characters
+;
+; Prints E characters starting from address HL to the screen by looping
+; calls to #R$BAD6.
 ;
 ; Used by the routines at #R$87EF and #R$BAFB.
-@label=ROUTINE_BAEE_PRINT_WORD
+@label=PRINT_STRING
 c$BAEE LD A,(HL)     ;
  $BAEF PUSH HL       ;
  $BAF0 PUSH DE       ;
@@ -8808,10 +8845,13 @@ c$BC83 INC C         ;
 ; This entry point is used by the routines at #R$BC6C, #R$BC72 and #R$BC7D.
 *$BC8C RET           ;
 
-; Routine at BC8D
+; Convert 1-based grid coords to screen coords
+;
+; Converts grid coordinates in B,C to screen coordinates: B = B*2 - 1,
+; C = C*2 - 1.
 ;
 ; Used by the routines at #R$9E38 and #R$BDA5.
-@label=ROUTINE_BC8D
+@label=GRID_TO_SCREEN_COORDS
 c$BC8D SLA B         ;
  $BC8F DEC B         ;
  $BC90 SLA C         ;
@@ -8877,7 +8917,7 @@ c$BC96 CALL $02BF    ; Keyboard ROM subroutine.
  $BCF5 POP BC        ;
  $BCF6 LD ($BC94),BC ;
  $BCFA CALL $BDA5    ;
- $BCFD CALL $BDD1    ; Maybe moving the cursor to a new position.
+ $BCFD CALL $BDD1    ; Convert grid coords to arena table address.
  $BD00 LD ($AC12),HL ;
  $BD03 LD HL,($AC12) ;
  $BD06 LD DE,$01E1   ; {Add $01E1 to HL to get the corresponding location in
@@ -9056,9 +9096,8 @@ c$BDE7 LD HL,($AC12) ;
 ; { $11 | 17 | Movement allowance }
 ; { $12 | 18 | Manoeuvre rating }
 ; { $13 | 19 | Magic resistance }
-; { $14 | 20 | Wizard only - no of spells? TODO }
-; { $15 | 21 | Chaos/law value - and wizard "ability"? TODO} { $16 | 22 | TODO
-; ??? }
+; { $14 | 20 | Wizard only - number of spells remaining }
+; { $15 | 21 | Chaos/law alignment value } { $16 | 22 | Casting chance }
 ; TABLE#
 ; .
 ; Used by the routines at #R$859C, #R$92F9, #R$9C59, #R$9CA9, #R$9E38, #R$A075,
@@ -9184,7 +9223,8 @@ c$BE52 LD A,B        ; {If we're checking off the edge of the arena (top),
 @label=GET_RANDOM_NUM_0_TO_9
 c$BE94 PUSH HL       ;
  $BE95 PUSH DE       ;
-*$BE96 LD A,R        ; TODO R register - perhaps generating random number?
+*$BE96 LD A,R        ; Use R register (memory refresh counter) as entropy
+                     ; source for random number generation.
  $BE98 LD E,A        ;
  $BE99 LD HL,$E0B5   ;
  $BE9C LD D,$00      ;
@@ -9256,9 +9296,8 @@ b$BEE9 DEFB $07,$06
 @label=SPELL_DESTINATION_COORDS
 b$BEEB DEFB $07,$05
 
-; Variable - temp variable used by get distance function (#R$BEEF) TODO X and Y
-; diffs?
-@label=VAR_TEMP_GET_DISTANCE_1
+; Variable - X distance temp for distance function (#R$BEEF)
+@label=DISTANCE_X_DIFF
 b$BEED DEFB $00
 
 ; Variable - temp variable used by get distance function (#R$BEEF)
@@ -9388,10 +9427,13 @@ b$C0BF DEFB $00,$00,$00,$00,$00,$00,$00,$00
 @label=VAR_C0D7
 b$C0D7 DEFB $00
 
-; Routine at C0D8 - maybe marks valid squares for casting creatures in arena?
+; Redraw all arena creature sprites
+;
+; Loops through all arena squares and redraws each creature's sprite at its
+; current position. Used to refresh the display after overlay effects.
 ;
 ; Used by the routine at #R$B8DD.
-@label=MAYBE_MARK_ARENA_SQUARES
+@label=REDRAW_ALL_ARENA_SPRITES
 c$C0D8 LD A,$01      ;
  $C0DA LD ($C0D7),A  ;
 ; This entry point is used by the routines at #R$836A, #R$839C, #R$83D0,
@@ -9509,8 +9551,8 @@ b$C293 DEFB $3F,$04,$01,$01,$28,$43,$04,$04
  $C2AB DEFB $FF,$FF,$FF,$FF,$FF,$FF,$32,$01
  $C2B3 DEFB $01,$01,$FF,$FF,$32,$32,$CE,$CE
 
-; Sound effect - TODO identify
-@label=SOUND_EFFECT_C2BB
+; Sound effect data - creature death
+@label=SOUND_EFFECT_DEATH
 b$C2BB DEFB $7F,$01,$01,$01,$0F,$12,$05,$05
  $C2C3 DEFB $17,$25,$14,$03,$FF,$FF,$FF,$FF
  $C2CB DEFB $FF,$FF,$F9,$E9,$5A,$01,$FF,$FF
@@ -9581,10 +9623,10 @@ c$C2F6 LD HL,($C2F3) ;
  $C337 DJNZ $C306    ;
  $C339 RET           ;
 
-; Routine at C33A
+; Busy-wait delay loop
 ;
 ; Used by the routine at #R$C2F6.
-@label=ROUTINE_C33A
+@label=DELAY_LOOP
 c$C33A DJNZ $C33A    ;
  $C33C RET           ;
 
@@ -9909,8 +9951,8 @@ c$C3B3 DI            ; Disable interrupts.
  $C5B3 LD A,($C39F)  ;
  $C5B6 LD D,A        ;
  $C5B7 LD E,$15      ;
- $C5B9 CALL $BE0A    ; {A = ... TODO usually the creature's chaos/law value,
- $C5BC ADD A,$30     ; but when it's a wizard?}
+ $C5B9 CALL $BE0A    ; {A = the creature's chaos/law alignment value (offset
+ $C5BC ADD A,$30     ; $15). For wizards this is their casting ability.}
  $C5BE CALL $BAD6    ;
 @label=DISPLAY_CREATURE_INFO_22
 *$C5C1 LD A,($C39D)  ;
@@ -9949,10 +9991,13 @@ c$C5EE LD HL,$4000   ;
  $C5F9 LDIR          ;
  $C5FB RET           ;
 
-; Routine at C5FC
+; Print info screen property keyword
+;
+; Prints a comma-separated creature property keyword. Prints a comma before
+; the 2nd and subsequent items (tracked via #R$C3A0 flag).
 ;
 ; Used by the routine at #R$C3B3.
-@label=ROUTINE_C5FC
+@label=PRINT_INFO_PROPERTY
 c$C5FC PUSH AF       ;
  $C5FD LD A,($C3A0)  ;
  $C600 OR A          ;
@@ -9965,10 +10010,13 @@ c$C5FC PUSH AF       ;
  $C60E LD ($C3A0),A  ;
  $C611 RET           ;
 
-; Routine at C612
+; Print creature stat and value
+;
+; Prints a stat label (COMBAT, DEFENCE, etc.) and its numeric value, then
+; auto-advances the stat index for the info screen display.
 ;
 ; Used by the routine at #R$C3B3.
-@label=ROUTINE_C612
+@label=PRINT_CREATURE_STAT
 c$C612 LD A,($C3A3)  ;
  $C615 PUSH AF       ;
  $C616 CALL $BAFB    ;
@@ -9990,10 +10038,13 @@ c$C612 LD A,($C3A3)  ;
  $C639 LD ($5C8F),A  ; }
  $C63C RET           ;
 
-; Routine at C63D
+; Check if cursor position is within arena bounds
+;
+; Gets the target location from #R$AC12, converts to screen coordinates using
+; #R$C703, and checks if the column < $10 (within the 15-column board).
 ;
 ; Used by the routine at #R$C9D4.
-@label=ROUTINE_C63D
+@label=CHECK_CURSOR_IN_BOUNDS
 c$C63D PUSH HL       ;
  $C63E LD HL,($AC12) ;
  $C641 CALL $C703    ;
@@ -10065,10 +10116,14 @@ c$C64C PUSH DE       ;
 @label=TEMP_VAR_C679
 b$C679 DEFB $12
 
-; Routine at C67A
+; Evaluate enemy creature threat at target
+;
+; Checks if the creature at #R$AC12 is an enemy (not owned by current wizard),
+; alive (table 3 != $04), and reachable. Returns a threat score based on the
+; creature's stats and distance, or 0 if no threat.
 ;
 ; Used by the routines at #R$C7BC, #R$CC56 and #R$CD92.
-@label=ROUTINE_C67A
+@label=EVALUATE_ENEMY_THREAT
 c$C67A LD HL,($AC12) ;
  $C67D LD A,(HL)     ;
  $C67E OR A          ;
@@ -10125,12 +10180,15 @@ b$C6D4 DEFB $08,$0B,$07,$09,$09,$0F,$0E,$06
  $C6F4 DEFB $04,$00,$00,$00,$00,$00,$00,$09
  $C6FC DEFB $09,$09,$09,$09,$09,$09,$09
 
-; Routine at C703
+; Convert arena address to board coordinates
+;
+; Takes an arena table address in HL, calls #R$E007 to get the raw coordinates,
+; then converts to 1-based board row/column (H = row, L = column).
 ;
 ; Used by the routines at #R$9786, #R$97D1, #R$980E, #R$9E38, #R$A075, #R$C63D,
 ; #R$C67A, #R$C710, #R$C7BC, #R$C8C7, #R$C955, #R$C9D4, #R$CA7C, #R$CA92,
 ; #R$CBC7, #R$CBCC, #R$CCC3 and #R$CD3C.
-@label=MAYBE_FIND_WIZ_COORDS
+@label=ARENA_ADDR_TO_BOARD_COORDS
 c$C703 LD ($E005),HL ;
  $C706 CALL $E007    ;
  $C709 SRL H         ;
@@ -10156,8 +10214,8 @@ c$C710 LD HL,$AC1E   ;
  $C725 LD A,(HL)     ;
  $C726 CP $24        ; {If A == $24, $26 or $27 (IDs of Magic Wood, Magic
  $C728 JR Z,$C77A    ; Castle or Dark Citadel respectively) jump to #R$C77A.
- $C72A CP $26        ; TODO Maybe getting the wizard to sit in place if in one
- $C72C JR Z,$C77A    ; of these hideouts?
+ $C72A CP $26        ; If the wizard is in a Magic Wood, Castle or Citadel,
+ $C72C JR Z,$C77A    ; skip normal movement and shelter in place.
  $C72E CP $27        ;
  $C730 JR Z,$C77A    ; }
  $C732 LD A,$00      ;
@@ -10206,10 +10264,13 @@ c$C710 LD HL,$AC1E   ;
 @label=VAR_C78B
 b$C78B DEFB $75,$E0
 
-; Routine at C78D
+; AI evaluate movement targets
+;
+; Scans for enemy wizards, sorts by threat score, picks the nearest target,
+; then evaluates movement options from the current position.
 ;
 ; Used by the routines at #R$9975 and #R$ACED.
-@label=ROUTINE_C78D
+@label=AI_EVALUATE_TARGETS
 c$C78D LD HL,($AC14) ;
  $C790 LD ($C78B),HL ;
  $C793 LD HL,$AC1E   ;
@@ -10236,10 +10297,13 @@ c$C78D LD HL,($AC14) ;
 @label=VAR_C7BB
 b$C7BB DEFB $0B
 
-; Routine at C7BC
+; AI scan arena for threats
+;
+; Scans all 159 arena positions for enemy creatures, building a prioritized
+; threat/distance list in the #R$D3F2 buffer.
 ;
 ; Used by the routines at #R$84F7, #R$9A95, #R$9B76 and #R$CA19.
-@label=ROUTINE_C7BC
+@label=AI_SCAN_THREATS
 c$C7BC LD HL,($C649) ;
  $C7BF LD ($AC14),HL ;
  $C7C2 LD HL,$D3F2   ;
@@ -10289,10 +10353,13 @@ c$C7BC LD HL,($C649) ;
  $C822 DJNZ $C7D8    ;
  $C824 RET           ;
 
-; Routine at C825
+; AI scan arena for enemy wizards
+;
+; Scans arena tables 1 and 5 for all enemy wizards (creature ID >= $29).
+; For each found, calls #R$C859 to rate their army strength.
 ;
 ; Used by the routines at #R$C78D and #R$CC56.
-@label=ROUTINE_C825
+@label=AI_SCAN_WIZARDS
 c$C825 LD HL,$D3F2   ;
  $C828 LD ($CD86),HL ;
  $C82B CALL $CDAA    ;
@@ -10321,10 +10388,13 @@ c$C825 LD HL,$D3F2   ;
 @label=VAR_C858
 b$C858 DEFB $01
 
-; Routine at C859
+; AI rate rival wizard's army strength
+;
+; Calculates a rival wizard's total army strength by summing threat values / 4
+; for all their creatures, plus a difficulty modifier.
 ;
 ; Used by the routine at #R$C825.
-@label=ROUTINE_C859
+@label=AI_RATE_WIZARD_STRENGTH
 c$C859 SUB $29       ;
  $C85B LD ($C858),A  ;
  $C85E LD HL,$AC0E   ;
@@ -10384,10 +10454,13 @@ c$C859 SUB $29       ;
 @label=VAR_C8B7
 b$C8B7 DEFB $76,$E0
 
-; Routine at C8B9
+; Load spell target address
+;
+; Reads the target wizard offset from #R$D3F3, converts to an arena table 1
+; address, and stores in #R$C8B7.
 ;
 ; Used by the routines at #R$C78D and #R$CA19.
-@label=ROUTINE_C8B9
+@label=LOAD_SPELL_TARGET_ADDR
 c$C8B9 LD HL,$D3F3   ;
  $C8BC LD E,(HL)     ;
  $C8BD LD HL,$E01F   ;
@@ -10396,10 +10469,14 @@ c$C8B9 LD HL,$D3F3   ;
  $C8C3 LD ($C8B7),HL ;
  $C8C6 RET           ;
 
-; Routine at C8C7
+; Evaluate adjacent directions for AI movement
+;
+; For each of the 8 directions, calculates distance from the adjacent space
+; to the target wizard. Sorts results by closest distance. Used for AI
+; pathfinding and ranged spell aiming.
 ;
 ; Used by the routines at #R$ACED and #R$C78D.
-@label=ROUTINE_C8C7
+@label=EVAL_ADJACENT_DIRECTIONS
 c$C8C7 CALL $CDAA    ;
  $C8CA LD HL,$D3F2   ;
  $C8CD LD ($CD86),HL ;
@@ -10457,10 +10534,13 @@ c$C8C7 CALL $CDAA    ;
  $C950 LD BC,($BC94) ;
  $C954 RET           ;
 
-; Maybe computer wizard movement routine
+; AI find move within spell range
+;
+; Scans all arena positions within the current spell's range, evaluates
+; distance and threat to find the optimal position for an AI wizard to move to.
 ;
 ; Used by the routines at #R$9975, #R$9ADD, #R$9B76 and #R$B0A8.
-@label=MAYBE_COMP_WIZARD_MOVEMENT
+@label=AI_FIND_MOVE_IN_RANGE
 c$C955 LD HL,$E01F   ;
  $C958 LD ($AC12),HL ;
  $C95B LD HL,$D3F2   ;
@@ -10514,8 +10594,12 @@ c$C955 LD HL,$E01F   ;
  $C9D0 LD ($CD86),HL ;
  $C9D3 RET           ;
 
-; Routine at C9D4
-@label=ROUTINE_C9D4
+; Get next valid move target from sorted list
+;
+; Walks backward through the sorted #R$D3F2 list, skipping $FF entries.
+; Returns the next valid arena target (with bounds check via #R$C63D), or
+; $4B (K) in #R$AC32 if the list is exhausted ($FE sentinel).
+@label=GET_NEXT_MOVE_TARGET
 c$C9D4 LD HL,($CD86) ;
  $C9D7 DEC HL        ;
  $C9D8 DEC HL        ;
@@ -10559,10 +10643,14 @@ b$CA16 DEFB $65,$E0
 @label=VAR_CA18
 b$CA18 DEFB $0F
 
-; Routine at CA19
+; AI retarget to nearest wizard
+;
+; Finds the owning wizard of the creature at #R$C8B7, then scans the entire
+; arena (tables 1 and 5) for that wizard. Redirects #R$C8B7 to the closer
+; location if found.
 ;
 ; Used by the routine at #R$C78D.
-@label=ROUTINE_CA19
+@label=AI_RETARGET_NEAREST_WIZARD
 c$CA19 CALL $C7BC    ;
  $CA1C LD HL,($C78B) ;
  $CA1F LD ($AC14),HL ;
@@ -10613,10 +10701,13 @@ c$CA19 CALL $C7BC    ;
  $CA76 LD ($C8B7),HL ;
 *$CA79 JP $C7B1      ;
 
-; Routine at CA7C
+; Calculate distance from HL to mover position
+;
+; Converts HL and the mover position (#R$C78B) to board coords, then calls
+; #R$BEEF to compute the distance. Returns result in A.
 ;
 ; Used by the routines at #R$C955 and #R$CA19.
-@label=ROUTINE_CA7C
+@label=CALC_DISTANCE_TO_MOVER
 c$CA7C CALL $C703    ;
  $CA7F LD ($BEE9),HL ;
  $CA82 LD HL,($C78B) ;
@@ -10626,10 +10717,14 @@ c$CA7C CALL $C703    ;
  $CA8E LD A,($BEE8)  ;
  $CA91 RET           ;
 
-; Routine at CA92
+; Initialise wizard movement / flying
+;
+; Locates the current wizard in the arena, checks for flying mount ($13-$15)
+; or magic wings (bit 5 in table 4), then builds 8-directional movement
+; options evaluating threats.
 ;
 ; Used by the routines at #R$ACED and #R$C710.
-@label=ROUTINE_CA92
+@label=INIT_WIZARD_MOVEMENT
 c$CA92 CALL $CDAA    ;
  $CA95 LD HL,$E01F   ; {Going to loop through every space in arena table 1.
  $CA98 LD B,$9F      ;
@@ -10769,10 +10864,14 @@ c$CA92 CALL $CDAA    ;
 @label=VAR_CBB8
 s$CBB8 DEFS $01
 
-; Routine at CBB9
+; Set flying range from mounted creature
+;
+; Looks up the mounted creature's movement stat (offset $11), doubles it and
+; adds 1, stores as the flying range limit in #R$CBB8. Falls through to
+; #R$CBCC.
 ;
 ; Used by the routine at #R$CA92.
-@label=ROUTINE_CBB9
+@label=SET_MOUNT_FLY_RANGE
 c$CBB9 LD D,A        ;
  $CBBA LD E,$11      ; {A = the creature's movement allowance.
  $CBBC CALL $BE0A    ; }
@@ -10781,17 +10880,24 @@ c$CBB9 LD D,A        ;
  $CBC2 LD ($CBB8),A  ;
  $CBC5 JR $CBCC      ;
 
-; Routine at CBC7
+; Set flying range from Magic Wings
+;
+; Sets the flying range to fixed value 13 (Magic Wings spell). Falls through
+; to #R$CBCC.
 ;
 ; Used by the routine at #R$CA92.
-@label=ROUTINE_CBC7
+@label=SET_WINGS_FLY_RANGE
 c$CBC7 LD A,$0D      ;
  $CBC9 LD ($CBB8),A  ;
 
-; Routine at CBCC
+; Build flying destination list
+;
+; Scans all 158 arena squares, keeps those within flying range (#R$CBB8).
+; Scores each with accumulated threat via #R$CD92, sorts results for AI
+; destination selection.
 ;
 ; Used by the routine at #R$CBB9.
-@label=ROUTINE_CBCC
+@label=BUILD_FLY_DESTINATION_LIST
 c$CBCC CALL $CDAA    ;
  $CBCF LD A,$01      ;
  $CBD1 LD ($C7BB),A  ;
@@ -10857,10 +10963,14 @@ c$CBCC CALL $CDAA    ;
 @label=VAR_CC55
 b$CC55 DEFB $00
 
-; Routine at CC56
+; AI build target list for spell casting
+;
+; Scans the arena for enemy creatures and wizards, building a prioritized list
+; of potential spell targets sorted by threat value. Used by AI spell casting
+; routines for Lightning, Dark Power, and ranged attacks.
 ;
 ; Used by the routines at #R$9C59, #R$9D8A, #R$9EF9 and #R$B8DD.
-@label=R_CC56_MAYBE_COMP_PICK_TARGET
+@label=AI_BUILD_SPELL_TARGET_LIST
 c$CC56 LD HL,($AC14) ;
  $CC59 LD ($C78B),HL ;
  $CC5C LD A,$3C      ;
@@ -10909,8 +11019,12 @@ c$CC56 LD HL,($AC14) ;
  $CCBF LD ($CC55),A  ;
  $CCC2 RET           ;
 
-; Routine at CCC3
-@label=ROUTINE_CCC3
+; Select next valid attack target from list
+;
+; Iterates through the sorted target list, filtering out invalid targets
+; (own mounts, empty castles, undead vs non-wizard). Returns valid target
+; coords and action code $53 ('S').
+@label=SELECT_NEXT_ATTACK_TARGET
 c$CCC3 LD HL,($CD86) ;
  $CCC6 INC HL        ;
  $CCC7 INC HL        ;
@@ -10948,7 +11062,7 @@ c$CCC3 LD HL,($CD86) ;
  $CD03 JP P,$CD16    ;
  $CD06 LD HL,($AC12) ;
  $CD09 LD A,(HL)     ;
- $CD0A CP $1C        ; {Maybe checking if creature is undead?
+ $CD0A CP $1C        ; {Check if creature is undead ($1C-$21 are undead types:
  $CD0C JP M,$CD16    ;
  $CD0F CP $22        ;
  $CD11 JP P,$CD16    ;
@@ -10963,8 +11077,11 @@ c$CCC3 LD HL,($CD86) ;
  $CD26 LD ($CD86),HL ;
  $CD29 RET           ;
 
-; Data block at CD2A
-@label=VAR_CD2A_MAYBE_TABLE
+; Direction offsets table (8 directions: row delta, column delta)
+;
+; Pairs of [row, column] offsets for the 8 adjacent directions:
+; NW(-1,-1), N(-1,0), NE(-1,1), W(0,1), SW(1,1), S(1,0), SE(1,-1), E(0,-1)
+@label=DIRECTION_OFFSETS
 b$CD2A DEFB $FF,$FF,$FF,$00,$FF,$01,$00,$01
  $CD32 DEFB $01,$01,$01,$00,$01,$FF,$00,$FF
 
@@ -10972,10 +11089,14 @@ b$CD2A DEFB $FF,$FF,$FF,$00,$FF,$01,$00,$01
 @label=VAR_CD3A
 b$CD3A DEFB $3A,$CD
 
-; Routine at CD3C
+; Get adjacent space in next direction
+;
+; Takes current position (#R$AC14), applies the next direction offset from
+; the #R$CD2A table, bounds-checks (rows 1-10, cols 1-15), converts back to
+; arena address. Advances the direction pointer.
 ;
 ; Used by the routines at #R$98F1, #R$9C0F, #R$9F50, #R$C8C7 and #R$CA92.
-@label=ROUTINE_CD3C
+@label=GET_ADJACENT_SPACE
 c$CD3C PUSH HL       ;
  $CD3D PUSH DE       ;
  $CD3E PUSH BC       ;
@@ -11030,10 +11151,14 @@ b$CD86 DEFB $F5,$D3,$51,$57,$45,$44,$43,$58
 @label=VAR_CD90
 b$CD90 DEFB $90,$CD
 
-; Routine at CD92
+; Accumulate threat scores across arena
+;
+; Loops through all 158 arena squares, calls #R$C67A for each to evaluate
+; the threat from enemy creatures. Sums the returned scores into the current
+; #R$D3F2 entry - builds a positional threat heatmap.
 ;
 ; Used by the routines at #R$CA92, #R$CBC7 and #R$CBCC.
-@label=ROUTINE_CD92
+@label=ACCUMULATE_THREAT_SCORES
 c$CD92 LD HL,$E01F   ;
  $CD95 LD B,$9E      ;
 *$CD97 PUSH BC       ;
@@ -11049,22 +11174,29 @@ c$CD92 LD HL,$E01F   ;
  $CDA7 DJNZ $CD97    ;
  $CDA9 RET           ;
 
-; Init D3F2
+; Initialise evaluation buffer
+;
+; Fills the #R$D3F2 evaluation buffer with alternating [0, $FF] pairs for
+; 158 entries. 0 = initial score, $FF = unused sentinel offset.
 ;
 ; Used by the routines at #R$C7BC, #R$C825, #R$C8C7, #R$C955, #R$CA92, #R$CBC7
 ; and #R$CBCC.
-@label=MAYBE_INIT_D3F2_STRIPES
+@label=INIT_EVAL_BUFFER
 c$CDAA LD HL,$D3F2   ; {Sets the table at #R$D3F2 to have an alternating
- $CDAD LD B,$9E      ; pattern of 0 and 255 (or -1). TODO Why?
-*$CDAF LD (HL),$00   ;
+ $CDAD LD B,$9E      ; pattern of 0 and 255 (or -1). Each pair represents
+*$CDAF LD (HL),$00   ; [score, arena_offset] - 0 score and $FF unused.
  $CDB1 INC HL        ;
  $CDB2 LD (HL),$FF   ;
  $CDB4 INC HL        ;
  $CDB5 DJNZ $CDAF    ; }
  $CDB7 RET           ;
 
-; Routine at CDB8
-@label=ROUTINE_CDB8
+; AI select movement step
+;
+; Walks backward through the #R$CD86-pointed sorted list, skips $FF (unused)
+; entries, then jumps to $BBF9 (cursor-move handler). This is the computer
+; AI's equivalent of picking a movement direction.
+@label=AI_SELECT_MOVE_STEP
 c$CDB8 LD HL,($CD86) ;
  $CDBB DEC HL        ;
  $CDBC DEC HL        ;
@@ -11609,8 +11741,11 @@ c$D392 DI            ;
 ; Data block at D3F0
 b$D3F0 DEFB $FE,$4B
 
-; Mysterious table, seemingly used to decide where computer players move.
-@label=MAYBE_AI_TABLE
+; AI evaluation buffer
+;
+; 158-entry table of [score, arena_offset] pairs used by AI routines to rank
+; movement destinations and spell targets. Initialised by #R$CDAA.
+@label=AI_EVAL_BUFFER
 b$D3F2 DEFB $3F,$46,$2D,$8A,$18,$46,$00,$FF,$00,$FF,$00,$FF,$00,$FF,$00,$FF
  $D402 DEFB $00,$FF,$00,$FF,$00,$FF,$00,$FF,$00,$FF,$00,$FF,$00,$FF,$00,$FF
  $D412 DEFB $00,$FF,$00,$FF,$00,$FF,$00,$FF,$00,$FF,$00,$FF,$00,$FF,$00,$FF
@@ -12030,16 +12165,22 @@ b$DE10 DEFB $E6,$7E,$3E,$00,$00,$00,$00,$00
  $DF00 DEFB $C6,$7C,$38,$00,$00,$00,$00,$00
  $DF08 DEFB $00,$00,$00,$00
 
-; Routine at DF0C
+; ISR entry point for sprite animation
+;
+; Trampoline: single JP to #R$DF72. Called from the ISR at #R$FE69.
 ;
 ; Used by the routine at #R$FE69.
-@label=ROUTINE_DF0C
+@label=ISR_ANIMATE_ENTRY
 c$DF0C JP $DF72      ;
 
-; Routine at DF0F - might be for printing text characters.
+; Print character at screen position
+;
+; Prints a character to the screen at pixel position B (row), C (column),
+; with character code in A. Uses the CHARS system variable ($5C36) for font
+; data and sets the attribute from ATTR_T ($5C8F).
 ;
 ; Used by the routines at #R$BAD6, #R$BB57 and #R$DF4E.
-@label=ROUTINE_DF0F_MAYBE_PRINTING_CHARACTERS
+@label=PRINT_CHAR_AT
 c$DF0F PUSH BC       ;
  $DF10 PUSH AF       ;
  $DF11 LD A,B        ;
@@ -12094,11 +12235,15 @@ b$DF4A DEFB $14,$FB
 @label=VAR_DF4C
 b$DF4C DEFB $1D,$11
 
-; Routine at DF4E maybe animation
+; Draw a 2x2 sprite tile
+;
+; Draws a 2×2 character sprite using the font data pointed to by #R$DF4A at
+; screen position #R$DF4C. Calls #R$DF0F four times for character codes
+; $20-$23 (the four quadrants).
 ;
 ; Used by the routines at #R$90F0, #R$9A52, #R$9C59, #R$9CA9, #R$A18A, #R$B375,
 ; #R$B3C9, #R$B8DD, #R$BABE and #R$DF72.
-@label=MAYBE_ANIMATION
+@label=DRAW_2X2_SPRITE
 c$DF4E LD HL,($DF4A) ;
  $DF51 DEC H         ;
  $DF52 LD ($5C36),HL ;
@@ -12117,10 +12262,14 @@ c$DF4E LD HL,($DF4A) ;
  $DF6E CALL $DF0F    ;
  $DF71 RET           ;
 
-; Routine at DF72
+; ISR creature animation handler
+;
+; Called from the ISR via #R$DF0C. Scans arena table 1, decrements per-creature
+; animation timers (table 2), and on expiry cycles the animation frame (0-3)
+; in table 3. Updates the sprite graphics pointer and redraws the 2×2 sprite.
 ;
 ; Used by the routine at #R$DF0C.
-@label=ROUTINE_DF72
+@label=ISR_ANIMATE_CREATURES
 c$DF72 PUSH HL       ;
  $DF73 PUSH BC       ;
  $DF74 PUSH DE       ;
@@ -13131,8 +13280,8 @@ b$EB45 DEFB $14,$FE,$05 ; #R$FE14
  $EB4B DEFB $14,$FE,$05
  $EB4E DEFB $14,$FE,$05
 
-; Data block at EB51
-@label=VAR_EB51_MAYBE_TABLE
+; Blank sprite (2x2 empty tile used to erase sprites)
+@label=BLANK_SPRITE
 b$EB51 DEFB $00,$00,$00,$00,$00,$00,$00,$00
  $EB59 DEFB $00,$00,$00,$00,$00,$00,$00,$00
  $EB61 DEFB $00,$00,$00,$00,$00,$00,$00,$00
@@ -14053,10 +14202,13 @@ b$FE34 DEFB $C8,$1C,$00,$00,$47,$FE,$01,$43
  $FE4C DEFB $00,$00,$00,$00,$00,$00,$00,$00
  $FE54 DEFB $00,$00
 
-; Routine at FE56
+; Enable IM 2 interrupt mode (custom ISR)
+;
+; Sets the I register to $09 and enables IM 2 so the CPU vectors through
+; the interrupt table to the custom ISR at #R$FE69.
 ;
 ; Used by the routines at #R$89F9, #R$92BE, #R$95C7 and #R$981A.
-@label=ROUTINE_FE56
+@label=ENABLE_CUSTOM_ISR
 c$FE56 LD A,$09      ;
  $FE58 LD I,A        ;
  $FE5A IM 2          ;
@@ -14065,10 +14217,12 @@ c$FE56 LD A,$09      ;
 ; Unused
 s$FE5D DEFS $03
 
-; Routine at FE60
+; Disable custom ISR (restore IM 1)
+;
+; Sets the I register to $3E and restores IM 1 (standard ROM interrupt).
 ;
 ; Used by the routine at #R$89F9.
-@label=ROUTINE_FE60
+@label=DISABLE_CUSTOM_ISR
 c$FE60 LD A,$3E      ;
  $FE62 LD I,A        ;
  $FE64 IM 1          ;
@@ -14077,8 +14231,11 @@ c$FE60 LD A,$3E      ;
 ; Unused
 s$FE67 DEFS $02
 
-; Routine at FE69
-@label=ROUTINE_FE69
+; Custom interrupt service routine
+;
+; Called 50 times per second via IM 2. Calls the sprite animation handler
+; at #R$DF0C, then jumps to the ROM's standard ISR at $0038.
+@label=CUSTOM_ISR
 c$FE69 DI            ;
  $FE6A CALL $DF0C    ;
  $FE6D EI            ;
