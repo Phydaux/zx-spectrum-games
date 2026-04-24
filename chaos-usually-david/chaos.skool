@@ -229,7 +229,7 @@ b$4000 DEFB $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,
  $5AC0 DEFB $07,$07,$07,$07,$07,$04,$04,$04,$04,$04,$44,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$44
  $5AE0 DEFB $03,$03,$03,$03,$03,$03,$03,$03,$03,$04,$44,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$44
 
-; Data block at 5B00
+; ZX Spectrum printer buffer (unused RAM, 256 bytes)
 b$5B00 DEFB $00,$00,$00,$00,$00,$00,$00,$00
  $5B08 DEFB $00,$00,$00,$00,$00,$00,$00,$00
  $5B10 DEFB $00,$00,$00,$00,$00,$00,$00,$00
@@ -2576,8 +2576,8 @@ b$8987 DEFB $5E,$5E,$5E,$5E,$5E,$5E,$5E,$5E
 ; Blank string
 t$8998 DEFM "              "
 
-; Data block at 89A6
-@label=VAR_89A6
+; Fill character for wizard name entry prompt
+@label=NAME_FILL_CHAR
 b$89A6 DEFB $5E
 
 ; Variable - strength of computer-controlled wizards.
@@ -2602,8 +2602,8 @@ b$89A9 DEFB $0F
 @label=CURRENT_WIZ_NAME_POINTER
 b$89AA DEFB $5C,$EA
 
-; Data block at 89AC
-@label=VAR_89AC
+; Variable - screen position for name entry display (column, row)
+@label=NAME_ENTRY_SCREEN_POS
 b$89AC DEFB $11,$10
 
 ; Variable - name length during name entry
@@ -3614,7 +3614,7 @@ b$910D DEFB $04,$03,$0A,$0A,$28,$46,$02,$02
 b$9135 DEFB $0A,$05,$01,$05,$1E,$08,$03,$07
  $913D DEFB $FD,$F6,$14,$03,$28,$28,$46,$64
 
-; Data block at 9145
+; Sound effect parameters - spell casting animation
 b$9145 DEFB $02,$03,$3C,$64,$14,$03,$01,$02
  $914D DEFB $03,$04,$01,$01,$01,$01
 
@@ -4820,8 +4820,8 @@ c$98F1 LD A,$00      ; {Set #R$9940 to 0.
  $993E OR A          ;
  $993F RET           ;
 
-; Data block at 9940
-@label=VAR_9940
+; Variable - wood placement validation result
+@label=WOOD_PLACEMENT_RESULT
 b$9940 DEFB $00
 
 ; Spawn a new creature or object in the arena.
@@ -5202,8 +5202,8 @@ c$9B76 LD A,$04      ; {Set the number of times you get to cast this spell (1)
  $9C0C POP BC        ;
  $9C0D RET           ;
 
-; Data block at 9C0E
-@label=VAR_9C0E
+; Variable - wall placement validation result
+@label=WALL_PLACEMENT_RESULT
 b$9C0E DEFB $00
 
 ; Validate Wall placement (check wizard not adjacent)
@@ -5801,7 +5801,10 @@ c$9F50 LD HL,$E01F   ; HL = #R$E01F, arena state table 1
  $A06C LD (HL),A     ;
  $A06D JR $A09B      ;
 
-; Data block at A06F
+; Inline code: set sound effect pointer to fire/blob spread sfx
+;
+; LD HL,$9135 / LD ($C2F3),HL - sets the sound effect before falling
+; through to the blob/fire attack routine at #R$A075.
 b$A06F DEFB $21,$35,$91,$22,$F3,$C2
 
 ; Blob and fire spreading attack
@@ -5932,8 +5935,8 @@ c$A075 LD HL,($AC14) ;
  $A16E LD ($BC94),HL ;
  $A171 RET           ;
 
-; Data block at A172
-@label=VAR_A172
+; Variable - temporary combat calculation value (defence total)
+@label=TEMP_COMBAT_VALUE
 b$A172 DEFB $0C
 
 ; Mark all creatures as not having moved yet.
@@ -5965,8 +5968,8 @@ c$A17E LD HL,($CD86) ;
  $A184 LD ($CD86),HL ;
  $A187 RET           ;
 
-; Data block at A188
-@label=VAR_A188
+; Variable - pointer to current explosion animation frame
+@label=EXPLOSION_ANIM_POINTER
 b$A188 DEFB $00,$00
 
 ; Display the cast animation (cyan line, twirl)
@@ -6366,16 +6369,16 @@ b$A425 DEFB $B0,$01,$53,$55,$42,$5F,$44,$CF
 @label=COMBAT_RANGE
 b$ABFC DEFB $00
 
-; Data block at ABFD
-@label=VAR_ABFD
+; Variable - arena address of a source position during ranged combat
+@label=RANGED_SOURCE_ADDR
 b$ABFD DEFB $BE,$E0
 
-; Data block at ABFF
-@label=VAR_ABFF
+; Variable - ranged combat active flag
+@label=RANGED_COMBAT_ACTIVE
 b$ABFF DEFB $01
 
-; Data block at AC00
-@label=VAR_AC00
+; Variable - index of killed wizard (creature code minus $29)
+@label=KILLED_WIZARD_INDEX
 b$AC00 DEFB $00
 
 ; Variable - a creature's movement points
@@ -6393,12 +6396,12 @@ b$AC02 DEFB $02
 @label=SELECT_SQUARE_RANGE
 b$AC03 DEFB $00
 
-; Data block at AC04
-@label=VAR_AC04
+; Variable - cursor map column coordinate
+@label=CURSOR_MAP_COL
 b$AC04 DEFB $07
 
-; Data block at AC05
-@label=VAR_AC05
+; Variable - cursor map row coordinate
+@label=CURSOR_MAP_ROW
 b$AC05 DEFB $06
 
 ; Variable - ID of an enemy adjacent to the selected creature
@@ -6454,8 +6457,8 @@ b$AC0F DEFB $02
 @label=CREATURE_STATUS_FLAGS
 b$AC10 DEFB $01
 
-; Data block at AC11
-@label=VAR_AC11
+; Variable - flag set to 1 when creature has engaged in ranged attack this turn
+@label=HAS_ENGAGED_FLAG
 b$AC11 DEFB $00
 
 ; Pointer to a memory address corresponding to a location in the game state
@@ -6513,12 +6516,12 @@ b$AC26 DEFB $00,$01,$00,$00,$00,$00,$00,$00
 @label=WIZ_IS_COMP_CONTROLLED
 b$AC2E DEFB $01
 
-; Data block at AC2F
-@label=VAR_AC2F
+; Variable - secondary movement phase flag
+@label=MOVEMENT_PHASE_FLAG
 b$AC2F DEFB $00
 
-; Data block at AC30
-@label=VAR_AC30
+; Variable - AI has computed movement direction flag
+@label=AI_DIRECTION_COMPUTED
 b$AC30 DEFB $00
 
 ; Variable - whether the current creature can fly. 0 = no, non-zero = yes.
@@ -6529,16 +6532,16 @@ b$AC31 DEFB $01
 @label=LAST_KEYPRESS
 b$AC32 DEFB $57
 
-; Data block at AC33
-@label=VAR_AC33
+; Variable - movement counter / flying movement points
+@label=MOVEMENT_COUNTER
 b$AC33 DEFB $00
 
 ; Variable - holds count of dead wizards in this game
 @label=DEAD_WIZARD_COUNT
 b$AC34 DEFB $01
 
-; Data block at AC35
-@label=VAR_AC35
+; Variable - shadow form movement points remaining
+@label=SHADOW_FORM_MOVEMENT
 b$AC35 DEFB $00
 
 ; Wizard turns.
@@ -6893,7 +6896,8 @@ c$ACED CALL $BDE7    ;
  $AEFE JP P,$AE50    ; }
  $AF01 JR $AF50      ;
 
-; Data block at AF03
+; Unreachable code fragment (disassembles as CP $24 / JR NZ,... / LD A,($AC0D)
+; / OR A / JR NZ,...)
 b$AF03 DEFB $FE,$24,$20,$06,$3A,$0D,$AC,$B7
  $AF0B DEFB $20,$43
 
@@ -7207,12 +7211,12 @@ b$B164 DEFB $00
 @label=ATTACK_RESULT
 b$B165 DEFB $00
 
-; Data block at B166
-@label=VAR_B166
+; Variable - pointer to attacked creature's stats table entry
+@label=ATTACKED_CREATURE_DATA_PTR
 b$B166 DEFB $00
 
-; Data block at B167
-@label=VAR_B167
+; Variable - attacking creature type for attack resolution
+@label=ATTACKING_CREATURE_TYPE
 b$B167 DEFB $00
 
 ; Attack calculation
@@ -7528,24 +7532,24 @@ c$B375 LD HL,$C24D   ;
  $B3C1 HALT          ;
  $B3C2 RET           ;
 
-; Data block at B3C3
-@label=VAR_B3C3
+; Variable - animation delay counter for combat display
+@label=COMBAT_ANIM_DELAY
 b$B3C3 DEFB $01
 
-; Data block at B3C4
-@label=VAR_B3C4
+; Variable - combat display X position
+@label=COMBAT_DISPLAY_X
 b$B3C4 DEFB $13
 
-; Data block at B3C5
-@label=VAR_B3C5
+; Variable - combat animation frame counter
+@label=COMBAT_ANIM_FRAME
 b$B3C5 DEFB $01
 
-; Data block at B3C6
-@label=VAR_B3C6
+; Variable - combat display Y position
+@label=COMBAT_DISPLAY_Y
 b$B3C6 DEFB $1D
 
-; Data block at B3C7
-@label=VAR_B3C7
+; Variable - combat display coordinates (column, row)
+@label=COMBAT_DISPLAY_COORDS
 b$B3C7 DEFB $0D,$09
 
 ; Wizard death
@@ -7834,12 +7838,12 @@ c$B3C9 DI            ;
  $B609 HALT          ;
  $B60A RET           ;
 
-; Data block at B60B
-@label=VAR_B60B
+; Variable - beam draw mode (0=collision test, 1+=draw with style)
+@label=BEAM_DRAW_MODE
 b$B60B DEFB $02
 
-; Data block at B60C
-@label=VAR_B60C
+; Variable - beam animation frame counter
+@label=BEAM_FRAME_COUNTER
 b$B60C DEFB $28
 
 ; Convert arena address to pixel coordinates
@@ -8060,8 +8064,8 @@ c$B746 LD A,($B60B)  ;
 *$B750 CALL $B755    ;
  $B753 RET           ;
 
-; Data block at B754
-@label=VAR_B754
+; Variable - beam hit flag (1 = pixel collision detected)
+@label=BEAM_HIT_FLAG
 b$B754 DEFB $00
 
 ; Test if pixel is set (beam collision)
@@ -8083,20 +8087,20 @@ c$B755 LD ($5C7D),BC ;
  $B765 LD ($B754),A  ;
  $B768 RET           ;
 
-; Data block at B769
-@label=VAR_B769
+; Variable - beam line step size
+@label=BEAM_STEP_SIZE
 b$B769 DEFB $0E
 
-; Data block at B76A
-@label=VAR_B76A
+; Variable - beam step counter
+@label=BEAM_STEP_COUNTER
 b$B76A DEFB $0E
 
-; Data block at B76B
-@label=VAR_B76B
+; Variable - beam start coordinates (2 bytes)
+@label=BEAM_START_COORDS
 b$B76B DEFB $70,$60
 
-; Data block at B76D
-@label=VAR_B76D
+; Beam coordinate pairs table (sequential pixel positions for beam trail)
+@label=BEAM_COORD_TABLE
 b$B76D DEFB $70,$60,$70,$5F,$70,$5E,$70,$5D
  $B775 DEFB $70,$5C,$70,$5B,$70,$5A,$70,$59
  $B77D DEFB $70,$58,$70,$57,$70,$56,$70,$55
@@ -8180,8 +8184,8 @@ c$B7D3 PUSH HL       ;
  $B842 POP HL        ;
  $B843 RET           ;
 
-; Data block at B844
-@label=VAR_B844
+; Variable - beam pixel pattern mode (1=single, 2=cross, 3=diamond; bit 7=erase)
+@label=BEAM_PIXEL_PATTERN
 b$B844 DEFB $02
 
 ; Draw beam pixel pattern
@@ -8604,7 +8608,8 @@ c$BAFB PUSH HL       ;
  $BB13 POP HL        ;
  $BB14 RET           ;
 
-; Data block at BB15
+; Graphics - border tile patterns (8 tiles x 8 bytes)
+@label=GRAPHICS_BORDER_TILES
 b$BB15 DEFB $D0,$E4,$D0,$EA,$D0,$E4,$D0,$EA
  $BB1D DEFB $57,$0B,$27,$0B,$57,$0B,$27,$0B
  $BB25 DEFB $FF,$FF,$AA,$55,$88,$22,$88,$00
@@ -8614,8 +8619,8 @@ b$BB15 DEFB $D0,$E4,$D0,$EA,$D0,$E4,$D0,$EA
  $BB45 DEFB $D0,$E1,$D4,$E1,$DA,$F5,$FF,$FF
  $BB4D DEFB $57,$0B,$27,$0B,$AF,$57,$FF,$FF
 
-; Data block at BB55
-@label=VAR_BB55
+; Variable - pointer to border tile pattern data
+@label=BORDER_PATTERN_PTR
 b$BB55 DEFB $15,$BB
 
 ; Draw the border.
@@ -9415,16 +9420,16 @@ b$BFB7 DEFB $00,$00,$00,$00,$00,$00,$00,$01 ; {Frame 1
  $C0A7 DEFB $80,$80,$80,$40,$40,$20,$18,$07 ;
  $C0AF DEFB $01,$01,$01,$02,$02,$04,$18,$E0 ; }
 
-; Data block at C0B7
+; Circle animation frame 9 - blank/erase frame (32 bytes zeros)
+@label=GRAPHICS_CIRCLE_BLANK
 b$C0B7 DEFB $00,$00,$00,$00,$00,$00,$00,$00
 
-; Data block at C0BF
 b$C0BF DEFB $00,$00,$00,$00,$00,$00,$00,$00
  $C0C7 DEFB $00,$00,$00,$00,$00,$00,$00,$00
  $C0CF DEFB $00,$00,$00,$00,$00,$00,$00,$00
 
-; Data block at C0D7
-@label=VAR_C0D7
+; Variable - flag controlling arena sprite refresh mode
+@label=SPRITE_REFRESH_MODE
 b$C0D7 DEFB $00
 
 ; Redraw all arena creature sprites
@@ -9518,7 +9523,8 @@ b$C123 DEFB $00,$00,$00,$00,$00,$00,$04,$03
  $C21B DEFB $00,$00,$00,$00,$00,$00,$00,$00
  $C223 DEFB $00,$00,$00,$00,$00,$00,$00,$00
 
-; Data block at C22B
+; Explosion animation blank frame - erase (24 bytes zeros)
+@label=GRAPHICS_EXPLOSION_BLANK
 b$C22B DEFB $00,$00,$00,$00,$00,$00,$00,$00
  $C233 DEFB $00,$00,$00,$00,$00,$00,$00,$00
  $C23B DEFB $00,$00,$00,$00,$00,$00,$00,$00
@@ -9568,8 +9574,8 @@ b$C2E3 DEFB $14,$04,$17,$2D,$38,$3F,$04,$FD
 @label=SOUND_EFFECT_C2F2
 b$C2F2 DEFB $30
 
-; Data block at C2F3
-@label=SOUND_EFFECT_C2F3
+; Variable - pointer to current sound effect data
+@label=SOUND_EFFECT_POINTER
 b$C2F3 DEFB $9D,$C2,$00
 
 ; Play sound effect.
@@ -9657,32 +9663,32 @@ b$C37D DEFB $F8,$E0,$F0,$B8,$98,$00,$00,$00
  $C38D DEFB $00,$00,$00,$98,$B8,$F0,$E0,$F8
  $C395 DEFB $00,$00,$00,$19,$1D,$0F,$07,$3F
 
-; Data block at C39D
-@label=VAR_C39D
+; Variable - object ID of creature beneath (from table 5) for info screen
+@label=INFO_OBJECT_BENEATH
 b$C39D DEFB $00
 
-; Data block at C39E
-@label=VAR_C39E
+; Variable - info screen display flags (bit 1=wizard, bit 2=has object beneath)
+@label=INFO_DISPLAY_FLAGS
 b$C39E DEFB $00
 
-; Data block at C39F
-@label=VAR_C39F
+; Variable - creature/spell ID being shown on info screen
+@label=INFO_CREATURE_ID
 b$C39F DEFB $00
 
-; Data block at C3A0
-@label=VAR_C3A0
+; Variable - comma separator flag (0=first property, 1=print comma before next)
+@label=INFO_COMMA_FLAG
 b$C3A0 DEFB $00
 
-; Data block at C3A1
-@label=VAR_C3A1
+; Variable - wizard equipment flags for info display
+@label=INFO_EQUIPMENT_FLAGS
 b$C3A1 DEFB $00
 
-; Data block at C3A2
-@label=VAR_C3A2
+; Variable - info screen stat line counter
+@label=INFO_STAT_COUNTER
 b$C3A2 DEFB $00
 
-; Data block at C3A3
-@label=VAR_C3A3
+; Variable - info screen stat offset into creature data
+@label=INFO_STAT_OFFSET
 b$C3A3 DEFB $00
 
 ; Variable - current chaos/law world tendency. Positive indicates lawful,
@@ -10171,8 +10177,12 @@ c$C67A LD HL,($AC12) ;
 *$C6D2 XOR A         ;
  $C6D3 RET           ;
 
-; Data block at C6D4
-@label=VAR_C6D4
+; AI threat rating table (one byte per creature type)
+;
+; Indexed by creature ID minus 2. Higher values indicate more threatening
+; creatures. Used by the AI target evaluation to decide which enemies to
+; prioritise.
+@label=AI_THREAT_RATINGS
 b$C6D4 DEFB $08,$0B,$07,$09,$09,$0F,$0E,$06
  $C6DC DEFB $0E,$0B,$0A,$0D,$09,$10,$0B,$0F
  $C6E4 DEFB $0F,$0F,$10,$15,$0F,$19,$19,$1B
@@ -10260,8 +10270,8 @@ c$C710 LD HL,$AC1E   ;
  $C786 SET 7,(HL)    ;
  $C788 JP $C74E      ;
 
-; Data block at C78B
-@label=VAR_C78B
+; Variable - mover's arena position (used by AI pathfinding)
+@label=MOVER_POSITION
 b$C78B DEFB $75,$E0
 
 ; AI evaluate movement targets
@@ -10293,8 +10303,8 @@ c$C78D LD HL,($AC14) ;
  $C7B7 CALL $C8C7    ;
  $C7BA RET           ;
 
-; Data block at C7BB
-@label=VAR_C7BB
+; Variable - count of threats found during AI scan
+@label=THREAT_COUNT
 b$C7BB DEFB $0B
 
 ; AI scan arena for threats
@@ -10384,8 +10394,8 @@ c$C825 LD HL,$D3F2   ;
  $C855 DJNZ $C836    ;
  $C857 RET           ;
 
-; Data block at C858
-@label=VAR_C858
+; Variable - wizard index during army strength calculation
+@label=RATED_WIZARD_INDEX
 b$C858 DEFB $01
 
 ; AI rate rival wizard's army strength
@@ -10450,8 +10460,8 @@ c$C859 SUB $29       ;
  $C8B3 LD ($CD86),HL ;
  $C8B6 RET           ;
 
-; Data block at C8B7
-@label=VAR_C8B7
+; Variable - target wizard's arena address for AI pathfinding
+@label=TARGET_WIZARD_ADDR
 b$C8B7 DEFB $76,$E0
 
 ; Load spell target address
@@ -10635,12 +10645,12 @@ c$C9D4 LD HL,($CD86) ;
  $CA12 LD ($AC32),A  ;
  $CA15 RET           ;
 
-; Data block at CA16
-@label=VAR_CA16
+; Variable - nearest wizard position during retarget scan
+@label=NEAREST_WIZARD_POS
 b$CA16 DEFB $65,$E0
 
-; Data block at CA18
-@label=VAR_CA18
+; Variable - minimum distance found during retarget scan
+@label=MIN_WIZARD_DISTANCE
 b$CA18 DEFB $0F
 
 ; AI retarget to nearest wizard
@@ -10860,8 +10870,8 @@ c$CA92 CALL $CDAA    ;
  $CBB3 LD BC,($BC94) ;
  $CBB7 RET           ;
 
-; Unused
-@label=VAR_CBB8
+; Variable - maximum flying range for current creature
+@label=FLY_RANGE_LIMIT
 s$CBB8 DEFS $01
 
 ; Set flying range from mounted creature
@@ -10959,8 +10969,8 @@ c$CBCC CALL $CDAA    ;
  $CC51 LD ($AC14),HL ;
  $CC54 RET           ;
 
-; Data block at CC55
-@label=VAR_CC55
+; Variable - AI threat weight modifier for target scoring
+@label=AI_THREAT_MODIFIER
 b$CC55 DEFB $00
 
 ; AI build target list for spell casting
@@ -11085,8 +11095,8 @@ c$CCC3 LD HL,($CD86) ;
 b$CD2A DEFB $FF,$FF,$FF,$00,$FF,$01,$00,$01
  $CD32 DEFB $01,$01,$01,$00,$01,$FF,$00,$FF
 
-; Data block at CD3A
-@label=VAR_CD3A
+; Variable - pointer to current direction in direction table
+@label=DIRECTION_PTR
 b$CD3A DEFB $3A,$CD
 
 ; Get adjacent space in next direction
@@ -11142,13 +11152,13 @@ c$CD3C PUSH HL       ;
  $CD81 LD ($AC14),HL ;
  $CD84 JR $CD71      ;
 
-; Data block at CD86
-@label=VAR_CD86
+; Variable - pointer to current position in evaluation buffer / key map table
+@label=EVAL_BUFFER_PTR
 b$CD86 DEFB $F5,$D3,$51,$57,$45,$44,$43,$58
  $CD8E DEFB $5A,$41
 
-; Data block at CD90
-@label=VAR_CD90
+; Variable - pointer to movement options table
+@label=MOVEMENT_OPTIONS_PTR
 b$CD90 DEFB $90,$CD
 
 ; Accumulate threat scores across arena
@@ -12227,12 +12237,12 @@ c$DF0F PUSH BC       ;
 ; Data block at DF47
 b$DF47 DEFB $00,$00,$00
 
-; Data block at DF4A
-@label=VAR_DF4A
+; Variable - pointer to current sprite graphics data (top half)
+@label=SPRITE_GRAPHICS_PTR
 b$DF4A DEFB $14,$FB
 
-; Data block at DF4C
-@label=VAR_DF4C
+; Variable - current sprite screen position (column, row)
+@label=SPRITE_SCREEN_POS
 b$DF4C DEFB $1D,$11
 
 ; Draw a 2x2 sprite tile
