@@ -1329,12 +1329,16 @@ c$7D00 JP $89F9      ;
 @label=ROUND_COUNTER
 b$7D03 DEFB $03
 
-; Routine at 7D04
+; Check if wizard still has creature allies
+;
+; After round 6, scans the entire arena to see if the current wizard owns any
+; creatures on the board. If no creatures are found, sets the wizard's entry in
+; #R$AC1E to $14 (20). If at least one owned creature exists, sets it to 0.
 ;
 ; Used by the routine at #R$95C7.
-@label=ROUTINE_7D04
-c$7D04 LD A,($7D03)  ; {If the round counter < 6, return. TODO Why?
- $7D07 CP $06        ;
+@label=CHECK_WIZARD_HAS_CREATURES
+c$7D04 LD A,($7D03)  ; {If the round counter < 6, return. The check only
+ $7D07 CP $06        ; matters after the early rush of creature summoning.
  $7D09 RET M         ; }
  $7D0A LD HL,$E01F   ; {Set the target location to the top left space in table
  $7D0D LD ($AC12),HL ; 1.}
@@ -1370,16 +1374,16 @@ c$7D04 LD A,($7D03)  ; {If the round counter < 6, return. TODO Why?
  $7D40 LD ($AC12),HL ; }
  $7D43 DJNZ $7D12    ; If we still have spaces to look at, jump back to
                      ; #R$7D12.
- $7D45 LD HL,$AC1E   ; {Set the wizard's status value in the small table at
- $7D48 LD D,$00      ; #R$AC1E to $14 (20 in decimal). TODO Why?
+ $7D45 LD HL,$AC1E   ; {Wizard has no owned creatures remaining. Set the
+ $7D48 LD D,$00      ; wizard's entry in #R$AC1E to $14 (20).
  $7D4A LD A,($AC0E)  ;
  $7D4D LD E,A        ;
  $7D4E ADD HL,DE     ;
  $7D4F LD (HL),$14   ; }
  $7D51 RET           ;
 *$7D52 POP BC        ;
- $7D53 LD HL,$AC1E   ; {Set the wizard's status value in the small table at
- $7D56 LD D,$00      ; #R$AC1E to 0. TODO Why?
+ $7D53 LD HL,$AC1E   ; {Wizard still has at least one owned creature. Set the
+ $7D56 LD D,$00      ; wizard's entry in #R$AC1E to 0.
  $7D58 LD A,($AC0E)  ;
  $7D5B LD E,A        ;
  $7D5C ADD HL,DE     ;
@@ -2033,10 +2037,10 @@ c$84F7 LD A,($AC2E)  ; {If the current wizard is computer controlled jump to
  $8516 CALL $C2F9    ; interrupts and return.
  $8519 EI            ;
  $851A RET           ; }
-*$851B CALL $85EC    ; Get the value in board state table 5 representing the
-                     ; spot at which the cursor is pointing. TODO - what does
-                     ; table 5 represent though?
- $851E JR NZ,$8505   ; If it's not 0, jump back to the start.
+*$851B CALL $85EC    ; {Get the value in board state table 5 for the cursor
+                     ; location. Table 5 holds the wizard ID if a wizard is
+                     ; hiding in a tree/castle or mounted on the creature.
+ $851E JR NZ,$8505   ; If it's not 0 (wizard present), jump back to the start.}
  $8520 LD HL,($AC12) ; {A = ID of the target object.
  $8523 LD A,(HL)     ; }
  $8524 CP $22        ; {If A == 0, or A >= $22 (i.e. not a creature that can be
@@ -2133,15 +2137,22 @@ c$859C LD A,($AC2E)  ; {If the current wizard is player controlled jump to
  $85E8 CALL $97A3    ; Display the spell succeeds/fails message.
  $85EB RET           ;
 
-; Maybe get owner
+; Get wizard ID from arena table 5 at cursor position
+;
+; Arena table 5 stores the wizard ID if a wizard is hiding in a magic tree or
+; castle, or is mounted on the creature at that square. Returns 0 if no wizard
+; is present.
+;
+; Input: (#R$AC12) = cursor position in arena table 1
+; Output: A = wizard ID from table 5 (0 = none), flags set by OR A
 ;
 ; Used by the routine at #R$84F7.
-@label=GET_INFO_FROM_BOARD_STATE_TABLE_5
-c$85EC LD HL,($AC12) ; {Load the memory address at which the cursor is pointing
- $85EF LD DE,$0281   ; and add $0281. Go to that memory location and set A to
- $85F2 ADD HL,DE     ; its value, OR A to set the registers, and return. A now
- $85F3 LD A,(HL)     ; contains the corresponding location in the fifth board
- $85F4 OR A          ; state table. TODO - what does it represent?
+@label=GET_WIZARD_ID_FROM_ARENA_TABLE_5
+c$85EC LD HL,($AC12) ; {Load the cursor position in arena table 1,
+ $85EF LD DE,$0281   ; add $0281 to reach the corresponding square in arena
+ $85F2 ADD HL,DE     ; table 5 (wizard hiding/mounted), load the value
+ $85F3 LD A,(HL)     ; and set flags.
+ $85F4 OR A          ;
  $85F5 RET           ; }
 
 ; Cast Raise Dead
@@ -2271,12 +2282,14 @@ c$86C3 CALL $A18A    ; Display cast animation.
  $86DA ADD HL,DE     ; 4.}
  $86DB LD E,$60      ; {Add the current wizard ID to $60. We're building up a
  $86DD LD A,($AC0E)  ; status value showing that the current wizard owns the
- $86E0 ADD A,E       ; creature, with bits 5 and 6 are set (setting bit 5 stops
-                     ; the computer from disbelieving it, and bit 6 ??? TODO).}
+ $86E0 ADD A,E       ; creature, with bits 5 and 6 set. Bit 5 stops the
+                     ; computer from disbelieving it. Bit 6 marks it as undead.}
  $86E1 LD (HL),A     ; Set the new status in arena table 4.
- $86E2 LD DE,$0140   ; {HL = pointer to status value in arena table 6.
+ $86E2 LD DE,$0140   ; {HL = pointer to corresponding entry in arena table 6.
  $86E5 ADD HL,DE     ; }
- $86E6 LD (HL),$00   ; Reset the value in arena table 6 to 0. TODO Why?
+ $86E6 LD (HL),$00   ; Clear the underlying creature ID from arena table 6,
+                     ; since the raised creature starts fresh with nothing
+                     ; beneath it.
  $86E8 CALL $C0DD    ;
  $86EB CALL $97A3    ; Display the spell succeeds/fails message.
  $86EE RET           ;
@@ -2561,14 +2574,16 @@ b$89A6 DEFB $5E
 @label=COMP_WIZ_STRENGTH
 b$89A7 DEFB $00
 
-; Variable - last key pressed. (TODO: only number keys?)
+; Variable - last key pressed
 ;
 ; Stored as the hex ID from the character set (e.g. A is $41).
 @label=LAST_KEY_PRESSED
 b$89A8 DEFB $32
 
-; Variable - maybe computer wizard strength
-@label=VAR_89A9_MAYBE_COMP_WIZ_STRENGTH
+; Variable - wizard strength base value during setup
+;
+; Computed as (wizard_index * 4) + 15, giving values 15-43 for wizards 0-7.
+@label=WIZARD_STRENGTH_BASE
 b$89A9 DEFB $0F
 
 ; Pointer - address of the current wizard's name
@@ -2585,8 +2600,11 @@ b$89AC DEFB $11,$10
 @label=NAME_ENTRY_LENGTH
 b$89AE DEFB $07
 
-; Data block at 89AF
-@label=VAR_89AF_MAYBE_LAST_LETTER_PRESSED
+; Variable - last keyboard input during wizard name entry
+;
+; Stored as the hex ID from the character set (e.g. A is $41, space is $20).
+; Validated against range $20 (space) and $41-$7A (letters).
+@label=LAST_KEY_PRESSED_NAME_ENTRY
 b$89AF DEFB $0D
 
 ; Keyboard input: picking a number from 1 to 8.
@@ -2629,8 +2647,10 @@ c$89B0 PUSH BC       ;
  $89EC SUB $31       ;
  $89EE RET           ;
 
-; Data block at 89EF
-@label=VAR_89EF_MAYBE_TABLE
+; Table - sound effect data (number key input)
+;
+; Passed to the sound routine at #R$C2F9 after a number key is pressed.
+@label=TABLE_SOUND_NUMBER_INPUT
 b$89EF DEFB $04,$0C,$04,$03,$02,$01,$01,$07
  $89F7 DEFB $50,$22
 
@@ -3414,23 +3434,33 @@ c$8F8B LD A,($5C8F)  ;
  $903A JP NZ,$8FA2   ;
  $903D RET           ;
 
-; Data block at 903E
-@label=VAR_903E_MAYBE_TABLE
+; Table - sound effect data (wizard selection)
+;
+; Passed to the sound routine at #R$C2F9 during wizard selection.
+@label=TABLE_SOUND_WIZARD_SELECT
 b$903E DEFB $14,$06,$02,$07,$14,$03,$FB,$14
  $9046 DEFB $00,$00,$00
 
-; Variable - maybe computer wizard strength?
-@label=VAR_9049_MAYBE_COMP_WIZ_STRENGTH
+; Variable - computer wizard strength index
+;
+; Set to 0 if the wizard is player-controlled, or to the wizard index from
+; #R$89A7 if computer-controlled. Read repeatedly and shifted right (divided)
+; during spell casting chance calculations.
+@label=COMPUTER_WIZARD_STRENGTH
 b$9049 DEFB $00
 
 ; Variable - wizard spell count
 @label=WIZARD_SPELL_COUNT
 b$904A DEFB $0F
 
-; Random number generator?
+; Random number generator
+;
+; Generates a pseudo-random number 0-9 by reading the Z80 R register (memory
+; refresh counter) multiple times and combining with the BASIC RND seed at
+; $5C76. Result is stored in #R$907A and returned in A.
 ;
 ; Used by the routines at #R$859C, #R$89F9, #R$8F8B and #R$96F3.
-@label=MAYBE_RANDOM_NUM_GENERATOR
+@label=RANDOM_NUMBER_GENERATOR
 c$904B PUSH HL       ;
 *$904C LD A,R        ;
  $904E LD HL,$5C76   ; HL = mem address of $5C76 (the seed for RND)
@@ -3499,8 +3529,12 @@ c$907B PUSH HL       ;
  $909D POP HL        ;
  $909E RET           ;
 
-; Data block at 909F
-@label=VAR_909F_MAYBE_TABLE
+; Table - per-wizard starting spell data
+;
+; 7 entries of 8 bytes, one per wizard (for wizards 2-8). Indexed as
+; ((wizard_index - 2) * 8). Each entry appears to contain initial spell
+; IDs or related setup data, zero-padded.
+@label=TABLE_PER_WIZARD_SPELL_DATA
 b$909F DEFB $41,$4D,$00,$00,$00,$00,$00,$00
  $90A7 DEFB $17,$81,$8D,$00,$00,$00,$00,$00
  $90AF DEFB $11,$1D,$81,$8D,$00,$00,$00,$00
@@ -3509,16 +3543,22 @@ b$909F DEFB $41,$4D,$00,$00,$00,$00,$00,$00
  $90C7 DEFB $07,$11,$1D,$60,$6E,$94,$9A,$00
  $90CF DEFB $00,$07,$0E,$40,$4E,$90,$97,$9E
 
-; Data block at 90D7
-@label=VAR_90D7_MAYBE_TABLE
+; Table - wizard character display codes
+;
+; 8 bytes containing ASCII/special codes used during wizard selection display.
+; Values $42-$47 are ASCII B-G, $06/$07 are special display codes.
+@label=TABLE_WIZARD_CHAR_DISPLAY_CODES
 b$90D7 DEFB $42,$43,$44,$45,$06,$46,$07,$47
 
 ; Variable - wizard image picked
 @label=WIZARD_CHARACTER_PICK
 b$90DF DEFB $01
 
-; Data block at 90E0
-@label=VAR_90E0_MAYBE_TABLE
+; Table - screen memory addresses for the 8 wizard portrait graphics
+;
+; Each 2-byte entry is a screen address. Indexed by wizard_index * 2 in
+; #R$90F0.
+@label=TABLE_WIZARD_PORTRAIT_ADDRS
 b$90E0 DEFB $34,$FD,$54,$FD,$74,$FD,$94,$FD
  $90E8 DEFB $B4,$FD,$D4,$FD,$F4,$FD,$14,$FE
 
@@ -3541,16 +3581,20 @@ c$90F0 LD A,($90DF)  ;
  $9109 CALL $DF4E    ;
  $910C RET           ;
 
-; Data block at 910D
-@label=VAR_910D_MAYBE_TABLE
+; Table - sound effect data
+;
+; Sound effect parameters passed to the sound routine at #R$C2F9.
+@label=TABLE_SOUND_EFFECT_910D
 b$910D DEFB $04,$03,$0A,$0A,$28,$46,$02,$02
  $9115 DEFB $46,$28,$06,$0C,$00,$14,$28,$3C
  $911D DEFB $02,$06,$0C,$28,$0C,$04,$0A,$0A
  $9125 DEFB $28,$07,$02,$02,$46,$1E,$01,$01
  $912D DEFB $01,$02,$03,$02,$00,$00,$00,$00
 
-; Data block at 9135
-@label=VAR_9135_MAYBE_TABLE
+; Table - sound effect data
+;
+; Sound effect parameters passed to the sound routine at #R$C2F9.
+@label=TABLE_SOUND_EFFECT_9135
 b$9135 DEFB $0A,$05,$01,$05,$1E,$08,$03,$07
  $913D DEFB $FD,$F6,$14,$03,$28,$28,$46,$64
 
@@ -4757,23 +4801,22 @@ c$9941 LD HL,($AC12) ; Load the memory address representing the cursor location
  $9949 JR Z,$9958    ; }
  $994B CP $23        ; {If the current spell ID is $23 (Magic Fire) jump to
  $994D JR Z,$9958    ; #R$9958.}
- $994F LD A,(HL)     ; {Copy the data at the cursor location to the
- $9950 LD DE,$0321   ; corresponding space in the data table 6, which starts at
- $9953 ADD HL,DE     ; #R$E340. TODO - don't know what that table is for yet.
- $9954 LD (HL),A     ; Dead creatures?}
+ $994F LD A,(HL)     ; {Save the ID of whatever is currently on this square to
+ $9950 LD DE,$0321   ; arena table 6 (underlying/displaced creature). This
+ $9953 ADD HL,DE     ; preserves the previous occupant so it can be restored
+ $9954 LD (HL),A     ; when the new creature dies or moves away.}
  $9955 LD A,($937B)  ; Load the current spell ID into A.
 @label=SPAWN_NEW_CREATURE_1
 *$9958 LD HL,($AC12) ; {Copy A into the memory address representing the current
  $995B LD (HL),A     ; cursor location. The spell IDs and the creature IDs
                      ; match up, so this spawns a new creature on the map.}
- $995C LD DE,$00A1   ; {Get the equivalent memory address in table 2.
+ $995C LD DE,$00A1   ; {Get the equivalent memory address in arena table 2.
  $995F ADD HL,DE     ; }
- $9960 LD (HL),$01   ; Set the value in table 2 to 1. TODO What does this
-                     ; indicate?
- $9962 DEC DE        ; {Get the equivalent memory address in table 3.
+ $9960 LD (HL),$01   ; Set the animation timeout counter to 1 (will animate on
+                     ; next cycle).
+ $9962 DEC DE        ; {Get the equivalent memory address in arena table 3.
  $9963 ADD HL,DE     ; }
- $9964 LD (HL),$00   ; Set the value in table 3 to 0. TODO What does this
-                     ; indicate?
+ $9964 LD (HL),$00   ; Set the animation frame to 0 (first frame).
  $9966 ADD HL,DE     ; Get the equivalent memory address in table 4.
  $9967 LD A,($AC0E)  ; {Set the value in table 4 to the current wizard ID.
  $996A LD (HL),A     ; }
@@ -5761,16 +5804,16 @@ c$A075 LD HL,($AC14) ;
  $A0E5 LD A,(HL)     ; A = object at the location in table 5
  $A0E6 OR A          ; {If nothing's there jump to #R$A0FE.
  $A0E7 JR Z,$A0FE    ; }
- $A0E9 LD (HL),$00   ; {There was something in table 5. It broke free! Delete
- $A0EB LD HL,($AC12) ; it from table 5 and move it to table 1.
- $A0EE LD (HL),A     ; }
- $A0EF LD DE,$0321   ; {A = the item at the corresponding location in arena
- $A0F2 ADD HL,DE     ; table 6. TODO What is it?
+ $A0E9 LD (HL),$00   ; {A wizard was hiding/mounted at this square (table 5).
+ $A0EB LD HL,($AC12) ; It broke free! Clear table 5 and put the wizard ID back
+ $A0EE LD (HL),A     ; into table 1 (the main board).}
+ $A0EF LD DE,$0321   ; {A = the underlying creature ID from arena table 6
+ $A0F2 ADD HL,DE     ; (whatever was on this square before the blob/fire).
  $A0F3 LD A,(HL)     ; }
- $A0F4 LD (HL),$00   ; Set the location in arena table 6 to 0.
+ $A0F4 LD (HL),$00   ; Clear the underlying creature from arena table 6.
  $A0F6 LD DE,$0140   ; {HL = the corresponding location in table 5.
  $A0F9 SBC HL,DE     ; }
- $A0FB LD (HL),A     ; Store A in table 5, moving the item from table 6 to 5.
+ $A0FB LD (HL),A     ; Move the underlying creature ID from table 6 to table 5.
  $A0FC JR $A109      ;
 *$A0FE LD HL,($AC12) ; TODO Fire/blob blinking out of existence?
  $A101 LD (HL),$01   ;
@@ -5905,8 +5948,10 @@ c$A18A LD A,(IX+$02) ;
  $A1E4 HALT          ;
  $A1E5 RET           ;
 
-; Data block at A1E6
-@label=VAR_A1E6_MAYBE_TABLE
+; Table - display data
+;
+; Used during blob/fire spread screen updates.
+@label=VAR_A1E6_DISPLAY_DATA
 b$A1E6 DEFB $0C,$A2,$0C,$A2,$2C,$A2,$4C,$A2
  $A1EE DEFB $6C,$A2,$0C,$A2,$2C,$A2,$4C,$A2
  $A1F6 DEFB $6C,$A2,$0C,$A2,$2C,$A2,$4C,$A2
@@ -6269,8 +6314,11 @@ b$AC00 DEFB $00
 @label=MOVEMENT_POINTS
 b$AC01 DEFB $3E
 
-; Variable - something to do with movement points
-@label=MAYBE_TEMP_MOVE_POINTS
+; Variable - movement cost for current step
+;
+; Set to 2 for orthogonal movement (up/down/left/right) or 3 for diagonal
+; movement. Subtracted from #R$AC01 (movement points) each step.
+@label=MOVEMENT_COST_PER_STEP
 b$AC02 DEFB $02
 
 ; Variable - select square range
@@ -6302,9 +6350,11 @@ b$AC08 DEFB $00
 @label=CREATURE_STATUS_FROM_TABLE_5
 b$AC09 DEFB $00
 
-; Variable - the wizard's XY coords are stored in here during #R$CA92. Also
-; used as the destination for creature movement on a computer player's turn.
-@label=MAYBE_WIZ_XY_COORDS
+; Variable - the current creature's or wizard's XY coordinates on the arena.
+;
+; Used during movement and computer player turns. Written from various sources
+; during creature/wizard position updates.
+@label=CURRENT_CREATURE_XY_COORDS
 b$AC0A DEFB $0F,$0A
 
 ; Variable - selected creature ID (attacking creature during an attack)
@@ -6374,10 +6424,12 @@ b$AC14 DEFB $BD,$E0
 @label=WIZARD_STATUS_VALUES
 b$AC16 DEFB $10,$00,$00,$00,$00,$00,$00,$00
 
-; TODO - Unknown wizard status values.
+; Wizard creature presence status
 ;
-; Don't know what this is recording. Set during the routine at #R$7D04.
-@label=UNKNOWN_WIZARD_STATUS_VALUES
+; 8 bytes, one for each wizard. Set by #R$7D04 after round 6. Value is $14
+; (20) if the wizard has no owned creatures on the board, 0 if they still have
+; at least one creature ally.
+@label=WIZARD_CREATURE_PRESENCE
 b$AC1E DEFB $00,$00,$00,$00,$00,$00,$00,$00
 
 ; Flags - computer controlled wizards
@@ -6401,8 +6453,8 @@ b$AC2F DEFB $00
 @label=VAR_AC30
 b$AC30 DEFB $00
 
-; Variable - maybe whether creature can fly. False if set to 0, otherwise true
-@label=MAYBE_CREATURE_CAN_FLY
+; Variable - whether the current creature can fly. 0 = no, non-zero = yes.
+@label=CREATURE_CAN_FLY
 b$AC31 DEFB $01
 
 ; Stores the last keypress (e.g. X for down = $58)
@@ -7351,8 +7403,12 @@ c$B168 CALL $BED7    ; Clear the message bar.
  $B370 RET NZ        ;
  $B371 JP $AF50      ;
 
-; Variable - maybe the ID of the attacked creature
-@label=MAYBE_ATTACKED_CREATURE_ID
+; Variable - underlying creature ID at the attacked square
+;
+; Holds the value from arena table 6 (#R$E340) at the attacked creature's
+; location. This is the creature that was underneath the current one. If the
+; attack kills the top creature, this value is restored to the square.
+@label=UNDERLYING_CREATURE_AT_TARGET
 b$B374 DEFB $00
 
 ; Display attack animation
@@ -9120,12 +9176,12 @@ c$BED7 PUSH AF       ;
 @label=VAR_DISTANCE
 b$BEE8 DEFB $02
 
-; Variable - maybe the spell casting source location coordinates
-@label=VAR_MAYBE_SPELL_SOURCE_COORDS
+; Variable - spell casting source location coordinates
+@label=SPELL_SOURCE_COORDS
 b$BEE9 DEFB $07,$06
 
-; Variable - maybe the spell casting destination coordinates
-@label=VAR_MAYBE_SPELL_DESTINATION_COORDS
+; Variable - spell casting destination coordinates
+@label=SPELL_DESTINATION_COORDS
 b$BEEB DEFB $07,$05
 
 ; Variable - temp variable used by get distance function (#R$BEEF) TODO X and Y
@@ -9293,8 +9349,8 @@ c$C0D8 LD A,$01      ;
  $C0FD SBC HL,DE     ;
 *$C0FF INC HL        ;
  $C100 DJNZ $C0E3    ;
- $C102 LD HL,$E0C0   ; {Set all of arena table 2 to contain the value 1. TODO
- $C105 LD DE,$E0C1   ; Why?
+ $C102 LD HL,$E0C0   ; {Set all of arena table 2 (animation timeout counters) to
+ $C105 LD DE,$E0C1   ; 1, so all creatures will animate on the next cycle.
  $C108 LD BC,$009F   ;
  $C10B LD (HL),$01   ;
  $C10D LDIR          ; }
@@ -9353,24 +9409,28 @@ b$C22B DEFB $00,$00,$00,$00,$00,$00,$00,$00
  $C233 DEFB $00,$00,$00,$00,$00,$00,$00,$00
  $C23B DEFB $00,$00,$00,$00,$00,$00,$00,$00
 
-; Data block at C243
-@label=VAR_C243_MAYBE_TABLE
+; Table - sound effect data
+;
+; Sound effect parameters passed to the sound routine at #R$C2F9.
+@label=TABLE_SOUND_EFFECT_C243
 b$C243 DEFB $32,$01,$0A,$1E,$32,$46,$14,$32
  $C24B DEFB $50,$8C,$05,$04,$0A,$14,$1E,$28
  $C253 DEFB $0A,$14,$1E,$28,$F0,$02,$14,$2E
  $C25B DEFB $39,$50,$FF,$FE,$FD,$FC,$14,$02
  $C263 DEFB $28,$28,$46,$64,$02,$03,$3C,$64
 
-; Data block at C26B
-@label=VAR_C26B_MAYBE_TABLE
+; Table - sound effect data
+;
+; Sound effect parameters passed to the sound routine at #R$C2F9.
+@label=TABLE_SOUND_EFFECT_C26B
 b$C26B DEFB $01,$01,$0A,$0A,$28,$46,$02,$02
  $C273 DEFB $46,$28,$01,$04,$01,$02,$03,$04
  $C27B DEFB $01,$01,$01,$01,$FF,$01,$FF,$FF
  $C283 DEFB $FF,$FF,$FC,$FC,$FC,$FC,$20,$04
  $C28B DEFB $FF,$FF,$1E,$3C,$FA,$FA,$28,$50
 
-; Data block at C293
-@label=VAR_C293_MAYBE_SOUND_EFFECT
+; Sound effect data
+@label=SOUND_EFFECT_C293
 b$C293 DEFB $3F,$04,$01,$01,$28,$43,$04,$04
  $C29B DEFB $E2,$B0,$06,$03,$01,$01,$14,$1E
  $C2A3 DEFB $04,$04,$11,$17,$01,$01,$FF,$FF
@@ -9390,8 +9450,8 @@ b$C2BB DEFB $7F,$01,$01,$01,$0F,$12,$05,$05
 b$C2E3 DEFB $14,$04,$17,$2D,$38,$3F,$04,$FD
  $C2EB DEFB $FD,$C6,$93,$04,$04,$E2,$B0
 
-; Data block at C2F2
-@label=VAR_C2F2_MAYBE_SOUND_EFFECT
+; Sound effect data
+@label=SOUND_EFFECT_C2F2
 b$C2F2 DEFB $30
 
 ; Data block at C2F3
@@ -9516,8 +9576,10 @@ b$C3A3 DEFB $00
 @label=CHAOS_LAW_LEVEL
 b$C3A4 DEFB $03
 
-; Data block at C3A5
-@label=VAR_C3A5_MAYBE_TABLE
+; Table - sound effect data
+;
+; Sound effect parameters passed to the sound routine at #R$C2F9.
+@label=TABLE_SOUND_EFFECT_C3A5
 b$C3A5 DEFB $04,$06,$04,$08,$15,$08,$04,$0A
  $C3AD DEFB $04,$0C,$04,$0E,$04,$10
 
@@ -9868,19 +9930,27 @@ c$C63D PUSH HL       ;
  $C647 POP HL        ;
  $C648 RET           ;
 
-; Variable - maybe wizard location
-@label=MAYBE_WIZ_LOCATION
+; Variable - active wizard's arena table 1 address
+;
+; Stores the arena table 1 memory address of the wizard whose turn it currently
+; is. Used during movement, casting, and computer AI turns.
+@label=ACTIVE_WIZARD_LOCATION
 b$C649 DEFB $BD,$E0
 
-; Variable - temp variable for shuffle TODO Why?
-@label=TEMP_VARIABLE_FOR_SHUFFLE
+; Variable - loop count for bubble sort
+@label=BUBBLE_SORT_COUNT
 b$C64B DEFB $0B
 
-; Unknown purpose - shuffles computer player's spells around. TODO Why?
+; Bubble sort on 2-byte entries
+;
+; Sorts a list of 2-byte entries in ascending order by first byte. Used to
+; order spell inventories by spell ID so they display in a consistent order.
+;
+; Input: HL = pointer to start of list, A = number of entries to sort.
 ;
 ; Used by the routines at #R$84F7, #R$85F6, #R$96F3, #R$9A95, #R$9B76, #R$C78D,
 ; #R$C8C7, #R$C955, #R$CA19, #R$CA92, #R$CBC7, #R$CBCC and #R$CC56.
-@label=SHUFFLE_INVENTORY_MAYBE
+@label=BUBBLE_SORT_SPELL_LIST
 c$C64C PUSH DE       ;
  $C64D LD ($C64B),A  ;
  $C650 LD B,A        ;
@@ -12077,32 +12147,42 @@ c$DF72 PUSH HL       ;
  $E002 POP HL        ;
  $E003 JR $DF93      ;
 
-; Variable - might be something to do with finding coordinates of something in
-; the arena
-@label=VAR_E005_MAYBE_ARENA_COORDS
+; Variable - arena table address to convert to board coordinates
+;
+; Used as input to #R$E007. Holds the address of a square in arena table 1
+; that the coordinate conversion routine will translate to row/column.
+@label=VAR_ARENA_ADDR_TO_CONVERT
 b$E005 DEFB $AD,$E0
 
-; Routine at E007
+; Convert arena table address to board coordinates
+;
+; Takes the arena table 1 address stored at #R$E005 and converts it to board
+; row and column coordinates. Each row is 16 bytes wide (15 used + 1 padding),
+; so the row is found by dividing the offset by 16, and the column from the
+; remainder.
+;
+; Input: (#R$E005) = address within arena table 1
+; Output: H = row (1-10), L = column (1-15, doubled i.e. 2,4,...30)
 ;
 ; Used by the routines at #R$9A52, #R$9C59, #R$9CA9, #R$A18A, #R$B375, #R$B3C9,
 ; #R$B8DD, #R$BABE, #R$C703, #R$D392 and #R$DF72.
-@label=MAYBE_FIND_ARENA_COORDS
-c$E007 LD HL,($E005) ;
- $E00A XOR A         ;
- $E00B LD DE,$E01F   ;
- $E00E SBC HL,DE     ; {A = HL - DE, to get how many spaces to count from
- $E010 LD A,L        ; #R$E01F before reaching the address that was in HL.}
- $E011 AND $F0       ;
- $E013 RRCA          ;
+@label=CONVERT_ARENA_ADDR_TO_COORDS
+c$E007 LD HL,($E005) ; Load the arena table address to convert.
+ $E00A XOR A         ; Clear A and carry flag.
+ $E00B LD DE,$E01F   ; DE = base of arena table 1.
+ $E00E SBC HL,DE     ; {HL = offset from start of arena table 1.
+ $E010 LD A,L        ; }
+ $E011 AND $F0       ; {Extract the row: upper nibble / 8 gives the row
+ $E013 RRCA          ; number (each row is 16 bytes, so upper nibble = row).
  $E014 RRCA          ;
  $E015 RRCA          ;
- $E016 LD H,A        ;
- $E017 LD A,L        ;
- $E018 RLA           ;
- $E019 AND $1E       ;
- $E01B LD L,A        ;
- $E01C INC H         ;
- $E01D INC L         ;
+ $E016 LD H,A        ; H = row (0-based).}
+ $E017 LD A,L        ; {Extract the column: lower nibble shifted left by 1
+ $E018 RLA           ; to give doubled column value.
+ $E019 AND $1E       ; }
+ $E01B LD L,A        ; L = column * 2 (0-based).
+ $E01C INC H         ; H = row + 1 (now 1-based).
+ $E01D INC L         ; L = column * 2 + 1 (now 1-based, odd).
  $E01E RET           ;
 
 ; Arena Table 1 - game state information
@@ -12125,10 +12205,15 @@ b$E01F DEFB $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
  $E09F DEFB $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$12,$00
  $E0AF DEFB $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
-; Data block at E0BF
+; Separator byte between arena table 1 and 2. This value ($FF) acts as an
+; end-of-row sentinel.
 b$E0BF DEFB $FF
 
-; Arena Table 2 - ???
+; Arena Table 2 - animation frame timeout counter
+;
+; Controls animation speed for each board square. Set to $01 when a creature
+; is placed. The animation routine decrements this counter; when it reaches
+; zero, the animation frame in arena table 3 advances to the next frame.
 @label=ARENA_STATE_2
 b$E0C0 DEFB $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
  $E0D0 DEFB $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
@@ -12141,9 +12226,10 @@ b$E0C0 DEFB $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
  $E140 DEFB $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$0F,$01
  $E150 DEFB $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
 
-; Arena Table 3 - TODO maybe records current animation frame, from 0-3?
+; Arena Table 3 - animation frame index
 ;
-; A value of 4 indicates that the creature is dead.
+; Records which animation frame (0-3) to display for the creature at each
+; board square. A value of $04 indicates that the creature is dead.
 @label=ARENA_STATE_3
 b$E160 DEFB $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00
  $E170 DEFB $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00
@@ -12195,21 +12281,14 @@ b$E2A0 DEFB $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
  $E320 DEFB $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$2A,$00
  $E330 DEFB $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
-; Arena Table 6 - records data about the objects in the arena.
+; Arena Table 6 - underlying/displaced creature ID
 ;
-; #TABLE(default,centre)
-; { =h Bit | =h Use }
-; { 7 | ??? }
-; { 6 | Tracks whether the creature at that space is undead through being
-; brought back to life with the raise dead spell. TODO Mistake? Isn't this in
-; table 4? Or in both? }
-; { 5 | ??? }
-; { 4 | ??? }
-; { 3 | ??? }
-; { 2 | ??? }
-; { 1 | ??? }
-; { 0 | ??? }
-; TABLE#
+; When a creature is spawned or moves onto an already-occupied square, the
+; previous occupant's ID is saved here. When the current occupant dies or
+; moves away, the value from this table is restored to arena table 1.
+; This acts as a one-level stack, allowing creatures to overlap (e.g. a
+; creature placed on top of a dead body). Cleared to $00 after Raise Dead,
+; since the raised creature starts fresh with nothing underneath.
 @label=ARENA_STATE_6
 b$E340 DEFB $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
  $E350 DEFB $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
