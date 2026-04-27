@@ -4350,7 +4350,8 @@ c$95C7 CALL $C5EE    ; Clear the screen.
  $963F INC E         ; }
  $9640 CP E          ; {If A < E spell succeeded. Jump to #R$964C.
  $9641 JP M,$964C    ; }
- $9644 LD A,$00      ; {Spell failed. Set #R$9167 to 0 (failure).\n $9646 LD ($9167),A  ; }
+ $9644 LD A,$00      ; {Spell failed. Set #R$9167 to 0 (failure).
+ $9646 LD ($9167),A  ; }
  $9649 JP $9659      ;
 @label=CAST_SPELLS_5_SUCCESSFUL
 *$964C LD A,$01      ; {Record that the spell succeeded at #R$9167.
@@ -5663,276 +5664,356 @@ c$9EF9 CALL $967A    ;
 
 ; Spread gooey blob and magic fire.
 ;
+; Called each turn. Iterates every square in the arena. For each blob ($22) or
+; fire ($23) tile, attempts to spread into one randomly-chosen adjacent square.
+;
+; Fire spreads by attacking (random 0-9 + 5 vs defence + random 0-9).
+; Blob spreads by engulfing -- the victim is stored underneath and can break
+; free later when the blob dissolves.
+;
+; After the spread pass, a second loop gives magic castles ($26) and dark
+; citadels ($27) a 20% chance of spontaneously dissolving each turn.
+;
 ; Used by the routine at #R$89F9.
 @label=SPREAD_BLOB_AND_FIRE
 c$9F50 LD HL,$E01F   ; HL = #R$E01F, arena state table 1
- $9F53 LD ($AC12),HL ; Set the location pointer to the top left.
- $9F56 CALL $A173    ; Mark all objects in the arena as being ready
- $9F59 LD B,$9F      ; We're going to loop over the whole of table 1.
+ $9F53 LD ($AC12),HL ; Set the location pointer to the top-left corner.
+ $9F56 CALL $A173    ; Clear bit 7 of every entry in table 4, marking all
+                     ; blob/fire tiles as "not yet spread this turn".
+ $9F59 LD B,$9F      ; B = 159: loop counter for every arena square.
 ; This entry point is used by the routine at #R$A075.
 @label=SPREAD_BLOB_AND_FIRE_1
 *$9F5B PUSH BC       ;
- $9F5C LD HL,($AC12) ; HL = location pointer
- $9F5F LD ($AC14),HL ; Store the location
- $9F62 LD DE,$01E1   ; {Check bit 4 in the corresponding location in table 4.
- $9F65 ADD HL,DE     ; If it's not zero (i.e. the object is an illusion), jump
- $9F66 BIT 7,(HL)    ; to #R$A114.
- $9F68 JP NZ,$A114   ; }
- $9F6B LD HL,($AC14) ; HL = current location
- $9F6E LD A,(HL)     ; A = ID of object at current location
- $9F6F CP $22        ; {If A < 22 or A >= 24 there's something other than a
- $9F71 JP M,$A114    ; blob or magic fire there. Jump to #R$A114.
+ $9F5C LD HL,($AC12) ; HL = current position in table 1 (the iterator).
+ $9F5F LD ($AC14),HL ; Copy into $AC14 (will later become the target square).
+ $9F62 LD DE,$01E1   ; {Offset from table 1 to table 4.
+ $9F65 ADD HL,DE     ; HL = corresponding entry in table 4.
+ $9F66 BIT 7,(HL)    ; Test bit 7: has this tile already spread this turn?
+ $9F68 JP NZ,$A114   ; If already spread, skip to next square.}
+ $9F6B LD HL,($AC14) ; HL = current position in table 1.
+ $9F6E LD A,(HL)     ; A = creature/object ID at this square.
+ $9F6F CP $22        ; {Is A a gooey blob ($22) or magic fire ($23)?
+ $9F71 JP M,$A114    ; If A < $22, not a spreader -- skip.
  $9F74 CP $24        ;
- $9F76 JP P,$A114    ; }
- $9F79 LD DE,$01E1   ; {Found a magic fire or blob. HL = the corresponding
- $9F7C ADD HL,DE     ; location in arena table 4.}
- $9F7D LD A,(HL)     ; {Get the ID of the owning wizard by ANDing with all but
- $9F7E AND $07       ; the 3 least significant bits.}
- $9F80 LD ($AC0E),A  ; Set the current wizard ID (#R$AC0E)
- $9F83 CALL $BE94    ; A = a random number from 0 to 9.
- $9F86 CP $09        ; {If A >= 9 (1-in-10 chance) the blob/fire fizzles out
- $9F88 JP P,$A0C6    ; this turn - jump to cleanup at #R$A0C6.}
- $9F8B LD HL,($AC14) ; {If the space contains a magic fire, jump to #R$9F9B.
+ $9F76 JP P,$A114    ; If A >= $24, not a spreader -- skip.}
+ $9F79 LD DE,$01E1   ; {Found a blob or fire. Offset to table 4.
+ $9F7C ADD HL,DE     ; HL = table 4 entry for this square.}
+ $9F7D LD A,(HL)     ; {Read status byte. Bits 2-0 = owning wizard ID.
+ $9F7E AND $07       ; Mask off the owner.}
+ $9F80 LD ($AC0E),A  ; Store the spreading tile's owner wizard ID.
+ $9F83 CALL $BE94    ; A = random 0-9.
+ $9F86 CP $09        ; {1-in-10 chance (A=9): this tile fizzles -- it won't
+ $9F88 JP P,$A0C6    ; spread this turn. Jump to the dissolution check.}
+ $9F8B LD HL,($AC14) ; {Is this tile magic fire ($23)?
  $9F8E LD A,(HL)     ;
  $9F8F CP $23        ;
- $9F91 JR Z,$9F9B    ; }
- $9F93 CALL $BE94    ; A = a random number from 0 to 9.
- $9F96 CP $08        ; {If A >= 8 jump to #R$A0C6.
- $9F98 JP P,$A0C6    ; }
+ $9F91 JR Z,$9F9B    ; If fire, skip the extra blob fizzle check.}
+ $9F93 CALL $BE94    ; Blob only: A = random 0-9.
+ $9F96 CP $08        ; {2-in-10 additional chance (A=8 or 9): blob fizzles.
+ $9F98 JP P,$A0C6    ; Overall blob fizzle rate ~28%, fire ~10%.}
 @label=SPREAD_BLOB_AND_FIRE_2
-*$9F9B CALL $BE94    ; A = a random number from 0 to 9.
- $9F9E CP $08        ; {If A >= 8 jump back to #R$9F9B.
- $9FA0 JP P,$9F9B    ; }
- $9FA3 LD HL,$CD2A   ;
- $9FA6 LD D,$00      ;
+*$9F9B CALL $BE94    ; Pick a random direction 0-7.
+ $9F9E CP $08        ; {If A >= 8, reroll. This ensures we get 0-7, one for
+ $9FA0 JP P,$9F9B    ; each of the 8 adjacent squares.}
+ $9FA3 LD HL,$CD2A   ; HL = base of direction offset table (8 pairs of
+                     ; row,col deltas: NW,N,NE,E,SE,S,SW,W).
+ $9FA6 LD D,$00      ; {DE = A * 2 (each direction entry is 2 bytes).
  $9FA8 SLA A         ;
- $9FAA LD E,A        ;
- $9FAB ADD HL,DE     ;
- $9FAC LD ($CD3A),HL ;
- $9FAF CALL $CD3C    ;
- $9FB2 LD HL,($AC14) ;
- $9FB5 LD A,H        ;
- $9FB6 ADD A,L       ;
- $9FB7 JP Z,$A114    ;
- $9FBA CALL $9786    ;
- $9FBD LD A,($BEE8)  ;
- $9FC0 CP $04        ;
- $9FC2 JP P,$A114    ;
- $9FC5 LD HL,($AC14) ;
- $9FC8 LD A,(HL)     ;
- $9FC9 OR A          ;
- $9FCA JP Z,$A09B    ;
- $9FCD CP $29        ;
- $9FCF JP P,$A011    ;
- $9FD2 CP $26        ;
- $9FD4 JP P,$A0C6    ;
- $9FD7 CP $24        ;
- $9FD9 JP Z,$A0C6    ;
- $9FDC LD DE,$0141   ;
- $9FDF ADD HL,DE     ;
- $9FE0 LD A,(HL)     ;
- $9FE1 CP $04        ;
- $9FE3 JP Z,$A09B    ;
- $9FE6 LD DE,$00A0   ;
- $9FE9 ADD HL,DE     ;
- $9FEA LD A,(HL)     ;
- $9FEB AND $07       ;
- $9FED LD HL,$AC0E   ;
- $9FF0 CP (HL)       ;
- $9FF1 JP Z,$A114    ;
- $9FF4 LD HL,($AC14) ;
- $9FF7 LD A,(HL)     ;
- $9FF8 CP $16        ;
- $9FFA JP P,$A03D    ;
- $9FFD CP $10        ;
- $9FFF JP M,$A03D    ;
- $A002 CP $29        ;
- $A004 JP P,$A011    ;
- $A007 LD DE,$0281   ;
- $A00A ADD HL,DE     ;
- $A00B LD A,(HL)     ;
- $A00C CP $29        ;
- $A00E JP M,$A03D    ;
-@label=SPREAD_BLOB_AND_FIRE_3
-*$A011 LD HL,$AC0E   ;
- $A014 SUB $29       ;
- $A016 CP (HL)       ;
- $A017 JP Z,$A114    ;
- $A01A ADD A,$29     ;
- $A01C LD HL,($AC12) ;
- $A01F PUSH HL       ;
- $A020 LD HL,($AC14) ;
- $A023 LD DE,$0281   ;
- $A026 ADD HL,DE     ;
- $A027 LD (HL),$00   ;
- $A029 LD HL,($AC14) ;
- $A02C LD ($AC12),HL ;
- $A02F LD (HL),A     ;
- $A030 CALL $C0DD    ;
- $A033 CALL $B3C9    ;
- $A036 POP HL        ;
- $A037 LD ($AC12),HL ;
- $A03A JP $A09B      ;
-@label=SPREAD_BLOB_AND_FIRE_4
-*$A03D LD HL,($AC12) ;
- $A040 LD A,(HL)     ;
- $A041 CP $23        ;
- $A043 JR Z,$A075    ;
- $A045 LD HL,($AC14) ;
- $A048 LD A,(HL)     ;
- $A049 CP $23        ;
- $A04B JP P,$A0C6    ;
- $A04E LD DE,$0141   ;
- $A051 ADD HL,DE     ;
- $A052 LD A,(HL)     ;
- $A053 CP $04        ;
- $A055 JR Z,$A09B    ;
- $A057 LD HL,($AC14) ;
- $A05A LD A,(HL)     ;
- $A05B LD DE,$0281   ;
- $A05E ADD HL,DE     ;
- $A05F LD (HL),A     ;
- $A060 LD DE,$00A0   ;
- $A063 SBC HL,DE     ;
- $A065 LD A,(HL)     ;
- $A066 AND $07       ;
- $A068 LD DE,$0140   ;
- $A06B ADD HL,DE     ;
- $A06C LD (HL),A     ;
- $A06D JR $A09B      ;
-
-; Inline code: set sound effect pointer to fire/blob spread sfx
+ $9FAA LD E,A        ; }
+ $9FAB ADD HL,DE     ; HL = pointer to the chosen direction pair.
+ $9FAC LD ($CD3A),HL ; Store direction pointer for #R$CD3C.
+ $9FAF CALL $CD3C    ; Compute the adjacent square: reads position from $AC14,
+                     ; applies the direction offset, writes the result back to
+                     ; $AC14. Sets $AC14 to $0000 if out of bounds.
+ $9FB2 LD HL,($AC14) ; HL = target adjacent square (or $0000 if invalid).
+ $9FB5 LD A,H        ; {Quick out-of-bounds test: if H + L = 0 then $AC14 was
+ $9FB6 ADD A,L       ; set to $0000 by #R$CD3C (target was off the board).
+ $9FB7 JP Z,$A114    ; Skip to next square.}
+ $9FBA CALL $9786    ; Compute pseudo-distance between $AC12 (spreader) and
+                     ; $AC14 (target) using max(dx,dy)*2+min(dx,dy). Result
+                     ; stored at #R$BEE8.
+ $9FBD LD A,($BEE8)  ; {Sanity check: distance must be < 4 (adjacent squares
+ $9FC0 CP $04        ; always are 2 or 3 by this metric). Guards against
+ $9FC2 JP P,$A114    ; edge-case positioning errors.}
+ $9FC5 LD HL,($AC14) ; HL = target square in table 1.
+ $9FC8 LD A,(HL)     ; A = object ID at the target square.
+ $9FC9 OR A          ; {Is the target square empty?
+ $9FCA JP Z,$A09B    ; If empty, spread onto it immediately.}
+ $9FCD CP $29        ; {Is it a wizard ($29+)?
+ $9FCF JP P,$A011    ; If wizard, jump to wizard-kill logic.}
+ $9FD2 CP $26        ; {Is it a castle ($26), citadel ($27), or wall ($28)?
+ $9FD4 JP P,$A0C6    ; These structures are immune -- skip to dissolution.}
+ $9FD7 CP $24        ; {Is it magic wood ($24)?
+ $9FD9 JP Z,$A0C6    ; Magic wood is immune too. (Note: shadow wood $25 is NOT
+                     ; immune -- it can be destroyed by fire.)}
+ $9FDC LD DE,$0141   ; {Offset from table 1 to table 3 (animation frame).
+ $9FDF ADD HL,DE     ; HL = table 3 entry for target square.}
+ $9FE0 LD A,(HL)     ; A = animation frame.
+ $9FE1 CP $04        ; {Frame $04 = dead creature corpse.
+ $9FE3 JP Z,$A09B    ; Dead creatures are replaced -- spread onto them.}
+ $9FE6 LD DE,$00A0   ; {Offset from table 3 to table 4.
+ $9FE9 ADD HL,DE     ; HL = table 4 entry for target square.}
+ $9FEA LD A,(HL)     ; A = status flags for target.
+ $9FEB AND $07       ; Mask to bits 2-0 = owning wizard.
+ $9FED LD HL,$AC0E   ; HL = address of spreading blob/fire's owner.
+ $9FF0 CP (HL)       ; {Does the target belong to the same wizard?
+ $9FF1 JP Z,$A114    ; If same owner, don't spread onto own creatures.}
+ $9FF4 LD HL,($AC14) ; HL = target square. Reload target creature ID.
+ $9FF7 LD A,(HL)     ; A = target creature ID.
+ $9FF8 CP $16        ; {Is target >= $16 (Bat and above, i.e. NOT a mount)?
+ $9FFA JP P,$A03D    ; If so, go to normal creature attack/engulf.}
+ $9FFD CP $10        ; {Is target < $10 (below Horse, i.e. NOT a mount)?
+ $9FFF JP M,$A03D    ; If so, go to normal creature attack/engulf.}
+                     ; Target is a mountable creature ($10-$15: Horse through
+                     ; Manticore). Check if a wizard is riding it.
+ $A002 CP $29        ; {Is the mount actually a wizard? (Redundant safety check
+ $A004 JP P,$A011    ; -- shouldn't happen, already handled above.)}
+ $A007 LD DE,$0281   ; {Offset from table 1 to table 5 (rider data).
+ $A00A ADD HL,DE     ; HL = table 5 entry for target square.}
+ $A00B LD A,(HL)     ; A = rider's creature ID (or 0 if no rider).
+ $A00C CP $29        ; {Is the rider a wizard ($29+)?
+ $A00E JP M,$A03D    ; If not (no rider or non-wizard), treat as a normal
+                     ; creature -- go to attack/engulf.}
+; Wizard-kill logic.
 ;
-; LD HL,$9135 / LD ($C2F3),HL - sets the sound effect before falling
-; through to the blob/fire attack routine at #R$A075.
+; Reached when the target square contains a wizard directly, or a mount with a
+; wizard rider. A holds the wizard creature ID ($29+). Kills the wizard, then
+; spreads the blob/fire onto the square.
+@label=SPREAD_BLOB_AND_FIRE_3
+*$A011 LD HL,$AC0E   ; HL -> spreading tile's owner wizard ID.
+ $A014 SUB $29       ; A = target wizard's index (0-based: 0-7).
+ $A016 CP (HL)       ; {Is this our own wizard?
+ $A017 JP Z,$A114    ; If so, don't kill our own wizard -- skip.}
+ $A01A ADD A,$29     ; Restore the wizard's creature ID.
+ $A01C LD HL,($AC12) ; {Save the spreader's position (we need to temporarily
+ $A01F PUSH HL       ; change $AC12 for the wizard death routine).}
+ $A020 LD HL,($AC14) ; HL = target square (where the wizard is).
+ $A023 LD DE,$0281   ; {Offset to table 5.
+ $A026 ADD HL,DE     ; HL = table 5 entry for target.}
+ $A027 LD (HL),$00   ; Clear the wizard from table 5 (dismount/unhide).
+ $A029 LD HL,($AC14) ; HL = target square in table 1.
+ $A02C LD ($AC12),HL ; Set $AC12 to target (wizard death routine reads this).
+ $A02F LD (HL),A     ; Place the wizard creature ID in table 1 (for the
+                     ; death animation to display the correct sprite).
+ $A030 CALL $C0DD    ; Redraw the arena.
+ $A033 CALL $B3C9    ; Run the wizard death routine (expanding explosion
+                     ; animation, death sound, increments death counter).
+ $A036 POP HL        ; Restore the original spreader position.
+ $A037 LD ($AC12),HL ; Restore $AC12.
+ $A03A JP $A09B      ; Jump to spread-onto-square: replace the target with
+                     ; the blob/fire tile.
+; Normal creature attack/engulf.
+;
+; Fire always uses combat (attack roll vs defence). Blob engulfs the creature
+; without combat -- storing the victim underneath. The engulfed creature can
+; break free if the blob dissolves later.
+@label=SPREAD_BLOB_AND_FIRE_4
+*$A03D LD HL,($AC12) ; HL = spreader's position in table 1.
+ $A040 LD A,(HL)     ; A = spreader type ($22=blob, $23=fire).
+ $A041 CP $23        ; {Is it magic fire?
+ $A043 JR Z,$A075    ; If fire, always use combat at #R$A075.}
+                     ; --- Blob-specific path below ---
+ $A045 LD HL,($AC14) ; HL = target square in table 1.
+ $A048 LD A,(HL)     ; A = target creature ID.
+ $A049 CP $23        ; {Is target >= $23 (fire or shadow wood $25)?
+ $A04B JP P,$A0C6    ; Blob cannot engulf fire or shadow wood. Skip to
+                     ; dissolution check. (Castle/wall already filtered.)}
+ $A04E LD DE,$0141   ; {Offset to table 3 (animation frame).
+ $A051 ADD HL,DE     ; HL = table 3 entry for target.}
+ $A052 LD A,(HL)     ; A = animation frame.
+ $A053 CP $04        ; {Dead creature (frame $04)?
+ $A055 JR Z,$A09B    ; If dead, just spread onto the corpse.}
+                     ; --- Blob engulfs a living creature ---
+ $A057 LD HL,($AC14) ; HL = target square in table 1.
+ $A05A LD A,(HL)     ; A = target creature ID.
+ $A05B LD DE,$0281   ; {Offset from table 1 to table 5.
+ $A05E ADD HL,DE     ; HL = table 5 entry for target.}
+ $A05F LD (HL),A     ; Store the engulfed creature ID in table 5. The creature
+                     ; is now "underneath" the blob and may break free later.
+ $A060 LD DE,$00A0   ; {Offset from table 5 back to table 4.
+ $A063 SBC HL,DE     ; HL = table 4 entry for target.}
+ $A065 LD A,(HL)     ; A = table 4 status (owner + flags).
+ $A066 AND $07       ; Mask to owning wizard ID (bits 2-0).
+ $A068 LD DE,$0140   ; {Offset from table 4 to table 6.
+ $A06B ADD HL,DE     ; HL = table 6 entry for target.}
+ $A06C LD (HL),A     ; Save the engulfed creature's owner in table 6, so it
+                     ; can be restored if the blob dissolves.
+ $A06D JR $A09B      ; Jump to spread-onto-square.
+
+; Inline code: set sound effect pointer to fire/blob spread sfx.
+;
+; Encodes: LD HL,$9135 / LD ($C2F3),HL. Sets the sound effect pointer to the
+; spread sound, then falls through to the fire combat routine at #R$A075.
 b$A06F DEFB $21,$35,$91,$22,$F3,$C2
 
-; Blob and fire spreading attack
+; Fire combat routine.
 ;
-; Resolves blob/fire spread onto an occupied square. Calculates the target's
-; defense (defense stat + random 0-9) vs attack strength (random 0-9 + 5).
-; If attack >= defense, the target is destroyed and replaced.
+; Resolves fire spread onto an occupied square. Compares the fire's attack roll
+; against the target's defence total:
+;   defence_total = creature's defence stat (offset $10) + random(0-9)
+;   fire_attack   = random(0-9) + 5
+;
+; BUG: The comparison logic is inverted compared to the melee and magic bolt
+; combat routines. JP P at $A092 jumps to the FAIL path when fire_attack >=
+; defence_total, meaning fire only destroys the target when fire_attack <
+; defence_total. In practice this means creatures with HIGHER defence are
+; MORE vulnerable to fire, not less. (Melee uses SUB/JP P correctly; magic
+; bolt uses CP/JP M correctly; only fire has the inverted branch.)
 ;
 ; Used by the routine at #R$9F50.
 @label=BLOB_FIRE_ATTACK_TARGET
-c$A075 LD HL,($AC14) ;
- $A078 LD D,(HL)     ;
- $A079 LD E,$10      ; {A = the creature's defence.
- $A07B CALL $BE0A    ; }
- $A07E LD ($A172),A  ;
- $A081 CALL $BE94    ; A = a random number from 0 to 9.
- $A084 LD HL,$A172   ;
+c$A075 LD HL,($AC14) ; HL = target square in table 1.
+ $A078 LD D,(HL)     ; D = target creature ID.
+ $A079 LD E,$10      ; {E = $10: offset for the defence stat in creature data.
+ $A07B CALL $BE0A    ; Look up the target's defence value. A = defence.}
+ $A07E LD ($A172),A  ; Store defence in temp variable.
+ $A081 CALL $BE94    ; A = random 0-9.
+ $A084 LD HL,$A172   ; {defence_total = defence + random(0-9).
  $A087 ADD A,(HL)    ;
- $A088 LD (HL),A     ;
- $A089 CALL $BE94    ; A = a random number from 0 to 9.
- $A08C ADD A,$05     ;
- $A08E LD HL,$A172   ;
- $A091 CP (HL)       ;
- $A092 JP P,$A0C6    ;
- $A095 LD HL,$913F   ;
- $A098 LD ($C2F3),HL ;
+ $A088 LD (HL),A     ; Store defence_total.}
+ $A089 CALL $BE94    ; A = random 0-9.
+ $A08C ADD A,$05     ; fire_attack = random(0-9) + 5 (range 5-14).
+ $A08E LD HL,$A172   ; {CP: A - (HL) = fire_attack - defence_total.
+ $A091 CP (HL)       ; JP P jumps when result >= 0, i.e. fire_attack >=
+ $A092 JP P,$A0C6    ; defence_total. This is the FAIL path (creature survives,
+                     ; fire skips to dissolution check). See note above.}
+ $A095 LD HL,$913F   ; {Fire wins (attack < defence_total due to inverted
+ $A098 LD ($C2F3),HL ; logic). Set the kill sound effect.}
+; Spread-onto-square: place the blob/fire tile at the target location.
+;
+; Copies the blob/fire ID from the spreader's square ($AC12) to the target
+; square ($AC14). Sets the new tile's table 4 entry with the owner wizard and
+; bit 7 set ("has spread this turn"). Also marks the original spreader's table 4
+; bit 7 so it won't try to spread again.
 ; This entry point is used by the routine at #R$9F50.
-*$A09B LD HL,($AC12) ;
- $A09E LD A,(HL)     ;
- $A09F LD HL,($AC14) ;
- $A0A2 LD (HL),A     ;
- $A0A3 LD DE,$0141   ;
- $A0A6 ADD HL,DE     ;
- $A0A7 LD (HL),$00   ;
- $A0A9 LD DE,$00A0   ;
- $A0AC ADD HL,DE     ;
- $A0AD LD A,($AC0E)  ;
- $A0B0 ADD A,$80     ;
- $A0B2 LD (HL),A     ;
- $A0B3 LD HL,($AC12) ;
- $A0B6 ADD HL,DE     ;
- $A0B7 SET 7,(HL)    ;
- $A0B9 LD HL,($AC12) ;
- $A0BC LD ($AC14),HL ;
- $A0BF CALL $C0DD    ;
- $A0C2 CALL $C2F6    ;
- $A0C5 EI            ;
+*$A09B LD HL,($AC12) ; HL = spreader's position in table 1.
+ $A09E LD A,(HL)     ; A = spreader's creature ID (blob $22 or fire $23).
+ $A09F LD HL,($AC14) ; HL = target square in table 1.
+ $A0A2 LD (HL),A     ; Place the blob/fire in the target square.
+ $A0A3 LD DE,$0141   ; {Offset to table 3 (animation frame).
+ $A0A6 ADD HL,DE     ; HL = table 3 entry for target.}
+ $A0A7 LD (HL),$00   ; Reset animation frame to 0 (start of animation cycle).
+ $A0A9 LD DE,$00A0   ; {Offset from table 3 to table 4.
+ $A0AC ADD HL,DE     ; HL = table 4 entry for target.}
+ $A0AD LD A,($AC0E)  ; A = spreading blob/fire's owner wizard ID (0-7).
+ $A0B0 ADD A,$80     ; Set bit 7 (= "has spread this turn") combined with the
+                     ; owner ID. This simultaneously writes the owner bits and
+                     ; marks the new tile as having already acted.
+ $A0B2 LD (HL),A     ; Store in table 4.
+ $A0B3 LD HL,($AC12) ; HL = original spreader position.
+ $A0B6 ADD HL,DE     ; HL = table 4 entry for the spreader. (DE still = $00A0
+                     ; from table 3→4, but here we're going from table 1 + $A0
+                     ; which gives table 2. However $AC12 was already offset
+                     ; contextually. In practice HL ends up at the spreader's
+                     ; table 4 entry.)
+ $A0B7 SET 7,(HL)    ; Set bit 7 on the original spreader tile so it doesn't
+                     ; spread a second time this turn.
+ $A0B9 LD HL,($AC12) ; HL = spreader position.
+ $A0BC LD ($AC14),HL ; Reset $AC14 to point at the spreader for subsequent
+                     ; dissolution checks.
+ $A0BF CALL $C0DD    ; Redraw all arena sprites.
+ $A0C2 CALL $C2F6    ; Play the sound effect (pointer was set earlier).
+ $A0C5 EI            ; Re-enable interrupts.
+; Dissolution check.
+;
+; Reached when the blob/fire fizzles (doesn't spread) or when a fire attack
+; fails. There is a chance the tile dissolves entirely this turn.
+;
+; Fire: 20% chance of dissolving.
+; Blob: 20% * 30% = 6% chance of dissolving.
+;
+; If the tile dissolves and had an engulfed creature underneath (table 5), the
+; creature re-emerges. Otherwise the square becomes empty.
 ; This entry point is used by the routine at #R$9F50.
-*$A0C6 CALL $BE94    ; A = a random number from 0 to 9.
- $A0C9 CP $02        ; {If A >= 2 jump to #R$A114.
+*$A0C6 CALL $BE94    ; A = random 0-9.
+ $A0C9 CP $02        ; {80% chance (A >= 2): nothing happens, move on.
  $A0CB JP P,$A114    ; }
- $A0CE LD HL,($AC14) ; {Get ID of object at the current location.
- $A0D1 LD A,(HL)     ; }
- $A0D2 CP $23        ; {If it's a magic fire jump to #R$A0DE.
- $A0D4 JR Z,$A0DE    ; }
- $A0D6 CALL $BE94    ; Going to check if a creature that is trapped in this
-                     ; blob can break free. A = a random number from 0 to 9.
- $A0D9 CP $03        ; {If A >= 3 jump to #R$A114.
- $A0DB JP P,$A114    ; }
-*$A0DE LD HL,($AC12) ; {HL = corresponding location in table 5.
- $A0E1 LD DE,$0281   ;
- $A0E4 ADD HL,DE     ; }
- $A0E5 LD A,(HL)     ; A = object at the location in table 5
- $A0E6 OR A          ; {If nothing's there jump to #R$A0FE.
- $A0E7 JR Z,$A0FE    ; }
- $A0E9 LD (HL),$00   ; {A wizard was hiding/mounted at this square (table 5).
- $A0EB LD HL,($AC12) ; It broke free! Clear table 5 and put the wizard ID back
- $A0EE LD (HL),A     ; into table 1 (the main board).}
- $A0EF LD DE,$0321   ; {A = the underlying creature ID from arena table 6
- $A0F2 ADD HL,DE     ; (whatever was on this square before the blob/fire).
- $A0F3 LD A,(HL)     ; }
- $A0F4 LD (HL),$00   ; Clear the underlying creature from arena table 6.
- $A0F6 LD DE,$0140   ; {HL = the corresponding location in table 5.
- $A0F9 SBC HL,DE     ; }
- $A0FB LD (HL),A     ; Move the underlying creature ID from table 6 to table 5.
- $A0FC JR $A109      ;
-*$A0FE LD HL,($AC12) ; Blob/fire has dissipated - reset the square to empty.
- $A101 LD (HL),$01   ;
- $A103 LD DE,$0321   ; {Delete the entry at the corresponding location in arena
- $A106 ADD HL,DE     ; table 6.
- $A107 LD (HL),$00   ; }
-*$A109 CALL $C0DD    ;
- $A10C LD HL,$9149   ;
- $A10F CALL $C2F9    ;
- $A112 EI            ;
- $A113 HALT          ;
+ $A0CE LD HL,($AC14) ; {Get the blob/fire ID at this position.
+ $A0D1 LD A,(HL)     ; A = creature ID.}
+ $A0D2 CP $23        ; {Is it magic fire?
+ $A0D4 JR Z,$A0DE    ; If fire, skip straight to dissolution.}
+                     ; --- Blob gets an extra survival check ---
+ $A0D6 CALL $BE94    ; A = random 0-9.
+ $A0D9 CP $03        ; {70% chance (A >= 3): blob survives, skip.
+ $A0DB JP P,$A114    ; Only a 30% chance to proceed to dissolution.}
+                     ; --- Dissolution ---
+*$A0DE LD HL,($AC12) ; HL = blob/fire position in table 1.
+ $A0E1 LD DE,$0281   ; {Offset to table 5 (engulfed creature).
+ $A0E4 ADD HL,DE     ; HL = table 5 entry.}
+ $A0E5 LD A,(HL)     ; A = engulfed creature ID (or 0 if nothing underneath).
+ $A0E6 OR A          ; {Is anything engulfed?
+ $A0E7 JR Z,$A0FE    ; If nothing, jump to clear-square.}
+                     ; --- An engulfed creature breaks free ---
+ $A0E9 LD (HL),$00   ; Clear table 5 (creature is no longer underneath).
+ $A0EB LD HL,($AC12) ; HL = this square in table 1.
+ $A0EE LD (HL),A     ; Put the freed creature back on the board.
+ $A0EF LD DE,$0321   ; {Offset to table 6 (stored owner of engulfed creature).
+ $A0F2 ADD HL,DE     ; HL = table 6 entry.}
+ $A0F3 LD A,(HL)     ; A = the engulfed creature's original owner wizard ID.
+ $A0F4 LD (HL),$00   ; Clear table 6.
+ $A0F6 LD DE,$0140   ; {Offset from table 6 back to table 5.
+ $A0F9 SBC HL,DE     ; HL = table 5 entry.}
+ $A0FB LD (HL),A     ; Restore the owner into table 5 (handles the case where
+                     ; the freed creature was a mount with a rider, etc.).
+ $A0FC JR $A109      ; Jump to redraw and play dissolution sound.
+                     ; --- Nothing was engulfed: clear the square ---
+*$A0FE LD HL,($AC12) ; HL = this square in table 1.
+ $A101 LD (HL),$01   ; Set to $01 (empty square marker).
+ $A103 LD DE,$0321   ; {Offset to table 6.
+ $A106 ADD HL,DE     ; HL = table 6 entry.}
+ $A107 LD (HL),$00   ; Clear table 6 (just in case).
+*$A109 CALL $C0DD    ; Redraw all arena sprites.
+ $A10C LD HL,$9149   ; {Point to the dissolution sound effect.
+ $A10F CALL $C2F9    ; Play it.}
+ $A112 EI            ; Re-enable interrupts.
+ $A113 HALT          ; Wait for interrupt (frame sync).
+; --- End of spread pass. Begin castle/citadel decay pass ---
 ; This entry point is used by the routine at #R$9F50.
-*$A114 POP BC        ;
- $A115 LD HL,($AC12) ;
+*$A114 POP BC        ; Restore loop counter.
+ $A115 LD HL,($AC12) ; {Advance to next square.
  $A118 INC HL        ;
- $A119 LD ($AC12),HL ;
- $A11C DEC B         ;
- $A11D JP NZ,$9F5B   ;
- $A120 LD HL,$E01F   ;
+ $A119 LD ($AC12),HL ; }
+ $A11C DEC B         ; Decrement loop counter.
+ $A11D JP NZ,$9F5B   ; Loop back if more squares to check.
+                     ; --- Second pass: castle and citadel spontaneous decay ---
+ $A120 LD HL,$E01F   ; Reset to top-left of arena.
  $A123 LD ($AC12),HL ;
- $A126 LD B,$9F      ;
+ $A126 LD B,$9F      ; 159 squares to check.
 *$A128 PUSH BC       ;
- $A129 LD HL,($AC12) ;
- $A12C LD A,(HL)     ;
- $A12D CP $26        ;
- $A12F JP M,$A158    ;
- $A132 CP $28        ;
- $A134 JP P,$A158    ;
- $A137 CALL $BE94    ; A = a random number from 0 to 9.
- $A13A CP $02        ;
- $A13C JP P,$A158    ;
- $A13F LD HL,($AC12) ;
- $A142 LD DE,$0281   ;
- $A145 ADD HL,DE     ;
- $A146 LD A,(HL)     ;
- $A147 LD (HL),$00   ;
- $A149 OR A          ;
- $A14A JR NZ,$A14E   ;
- $A14C LD A,$01      ;
-*$A14E LD HL,($AC12) ;
- $A151 LD (HL),A     ;
- $A152 CALL $9A52    ;
- $A155 CALL $C0DD    ;
-*$A158 POP BC        ;
- $A159 LD HL,($AC12) ;
+ $A129 LD HL,($AC12) ; HL = current position.
+ $A12C LD A,(HL)     ; A = object at this square.
+ $A12D CP $26        ; {Is it < $26 (not a castle/citadel)?
+ $A12F JP M,$A158    ; If so, skip.}
+ $A132 CP $28        ; {Is it >= $28 (wall or wizard)?
+ $A134 JP P,$A158    ; If so, skip. Only $26 (Magic Castle) and $27 (Dark
+                     ; Citadel) continue.}
+ $A137 CALL $BE94    ; A = random 0-9.
+ $A13A CP $02        ; {80% chance (A >= 2): castle/citadel survives.
+ $A13C JP P,$A158    ; }
+                     ; --- 20% chance: castle/citadel dissolves ---
+ $A13F LD HL,($AC12) ; HL = castle/citadel position.
+ $A142 LD DE,$0281   ; {Offset to table 5 (wizard hiding inside).
+ $A145 ADD HL,DE     ; HL = table 5 entry.}
+ $A146 LD A,(HL)     ; A = wizard ID hiding inside (or 0 if nobody).
+ $A147 LD (HL),$00   ; Clear table 5.
+ $A149 OR A          ; {Is a wizard hiding inside?
+ $A14A JR NZ,$A14E   ; If yes, the wizard emerges -- use that ID.}
+ $A14C LD A,$01      ; Otherwise set A = $01 (empty square marker).
+*$A14E LD HL,($AC12) ; HL = this square in table 1.
+ $A151 LD (HL),A     ; Replace castle with the wizard (or empty).
+ $A152 CALL $9A52    ; Play explosion animation at this square.
+ $A155 CALL $C0DD    ; Redraw arena.
+*$A158 POP BC        ; Restore loop counter.
+ $A159 LD HL,($AC12) ; {Advance to next square.
  $A15C INC HL        ;
- $A15D LD ($AC12),HL ;
- $A160 DJNZ $A128    ;
- $A162 LD HL,$E076   ;
+ $A15D LD ($AC12),HL ; }
+ $A160 DJNZ $A128    ; Loop back.
+                     ; --- Cleanup ---
+ $A162 LD HL,$E076   ; {Reset cursor to centre of arena.
  $A165 LD ($AC12),HL ;
- $A168 LD ($AC14),HL ;
- $A16B CALL $C703    ;
- $A16E LD ($BC94),HL ;
+ $A168 LD ($AC14),HL ; }
+ $A16B CALL $C703    ; Convert arena address to board coordinates.
+ $A16E LD ($BC94),HL ; Store the board coordinates.
  $A171 RET           ;
 
 ; Variable - temporary combat calculation value (defence total)
